@@ -45,13 +45,12 @@ class ReadDatabase(object):
             columns_str = "*" if columns == None else ', '.join(columns) 
             sql_string = "SELECT %s FROM %s;" % (columns_str, table_name)
 
+        cursor = self.conn.cursor()
         try:
             cursor.execute(sql_string)
         except sql.errors.ProgrammingError:
             print(sql_string)
             raise
-
-        cursor.execute(sql_string)
         
         if write:
             pass
