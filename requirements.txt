@@ -1,0 +1,8 @@
+pandas
+numpy
+matplotlib
+datetime
+seaborn
+my-sql-connector
+beautifulsoup4
+progressbar2
