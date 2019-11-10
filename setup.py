@@ -7,7 +7,7 @@ with open('LICENSE') as f:
     license = f.read()
 
 setup(name='nba_stats',
-      version='0.1.5',
+      version='0.1.6',
       description='Contains functions used to create, manage and use a database of nba statistics.',
       long_description=readme,
       author='Chris Ebeling',
@@ -18,4 +18,7 @@ setup(name='nba_stats',
                    'License :: OSI Approved :: MIT License'],
       license=license,
       packages=find_packages(),
-      scripts=['nba_stats/scripts/scrape_games.py'])
+      entry_points={
+          'console_scripts':['nba_stats/scripts/scrape_games.py']
+          }
+      )
