@@ -1,0 +1,3 @@
+[console_scripts]
+scrape_games = nba_stats.scripts.scrape_games:main
+

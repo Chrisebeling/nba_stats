@@ -4,6 +4,7 @@ nba_stats/__init__.py
 nba_stats.egg-info/PKG-INFO
 nba_stats.egg-info/SOURCES.txt
 nba_stats.egg-info/dependency_links.txt
+nba_stats.egg-info/entry_points.txt
 nba_stats.egg-info/top_level.txt
 nba_stats/read_write/__init__.py
 nba_stats/read_write/basic_stats.py
