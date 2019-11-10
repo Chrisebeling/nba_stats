@@ -4,5 +4,5 @@ matplotlib==3.0.2
 pandas==0.24.0
 numpy==1.16.1
 beautifulsoup4==4.8.1
-my-sql-connector
+mysql-connector-python
 progressbar2==3.47.0
