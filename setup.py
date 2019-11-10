@@ -17,4 +17,5 @@ setup(name='nba_stats',
                    'Environment :: Win32 (MS Windows)',
                    'License :: OSI Approved :: MIT License'],
       license=license,
-      packages=find_packages())
+      packages=find_packages(),
+      scripts=['scripts/scrape_games.py'])
