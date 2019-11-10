@@ -15,13 +15,20 @@ def isfloat(number):
         return False
 
 class ReadDatabase(object):
-    def __init__(self, _user="root", _password="7S8!FqSg46J@", _db='nba_stats', _host='localhost', _port=3306):
-        self.conn = sql.connect(
-            host=_host,
-            port=_port,
-            user=_user,
-            password=_password,
-            database=_db)
+    def __init__(self, _password, _user="root", _db='nba_stats', _host=None, _port=3306,_unix=None):
+        if _unix:
+            self.conn = sql.connect(
+                unix_socket=_unix,
+                user=_user,
+                password=_password,
+                database=_db)
+        elif _port and _host:
+            self.conn = sql.connect(
+                host=_host,
+                port=_port,
+                user=_user,
+                password=_password,
+                database=_db)
         self.summary = {}
         self.summary_cats = {}
         self.current_summary = 'default'

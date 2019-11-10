@@ -9,7 +9,7 @@ parser.add_argument('-c', '--count_max', nargs='?', type=int, default=100, help=
 
 args = parser.parse_args()
 
-stats_db = SqlDataframes(_user="root", _password="7S8!FqSg46J@")
+stats_db = SqlDataframes(_host="nba-stats-inst.clmw4mwgj0eg.ap-southeast-2.rds.amazonaws.com", _password="23cHcGN9PNxxUKtAzGp28kJ7u")
 games_table = stats_db.read_table('games',['game_id','bref'])
 
 for i in range(args.loops):
@@ -19,7 +19,7 @@ for i in range(args.loops):
         break
     add_basic_gamestats(id_bref_soup)
     if i == args.loops - 1:
-        stats_db = SqlDataframes(_user="root", _password="7S8!FqSg46J@")
+        stats_db = SqlDataframes(_host="nba-stats-inst.clmw4mwgj0eg.ap-southeast-2.rds.amazonaws.com", _password="23cHcGN9PNxxUKtAzGp28kJ7u")
         games_max = stats_db.read_max('games','game_id')
         boxs_max = stats_db.read_max('boxscores', 'game_id')
         print('\n', 'FINISHED...Games remaining to scrape: %s' % (games_max-boxs_max))

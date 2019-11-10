@@ -1,8 +1,8 @@
-pandas
-numpy
-matplotlib
-datetime
-seaborn
+seaborn==0.9.0
+setuptools==40.7.2
+matplotlib==3.0.2
+pandas==0.24.0
+numpy==1.16.1
+beautifulsoup4==4.8.1
 my-sql-connector
-beautifulsoup4
-progressbar2
+progressbar2==3.47.0

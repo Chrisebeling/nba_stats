@@ -32,7 +32,7 @@ PLAYOFF_TEAMS = {1954: 6,
                 1977: 12,
                 1984: 16}
 
-stats_db = SqlDataframes(_user="root", _password="7S8!FqSg46J@")
+stats_db = SqlDataframes(_host="nba-stats-inst.clmw4mwgj0eg.ap-southeast-2.rds.amazonaws.com", _password="23cHcGN9PNxxUKtAzGp28kJ7u")
 
 def get_players_urls(players_url=None):
     '''Returns soup objects of bref player pages (a-z)
