@@ -1,5 +1,8 @@
 from setuptools import find_packages, setup
 
+with open('requirements.txt') as f: 
+    requirements = f.readlines() 
+
 with open('README.md') as f:
     readme = f.read()
 
@@ -21,5 +24,6 @@ setup(name='nba_stats',
       entry_points={
           'console_scripts':[
               'scrape_games = nba_stats.scripts.scrape_games:main']
-          }
+          },
+      install_requires=requirements
       )
