@@ -10,7 +10,7 @@ with open('LICENSE') as f:
     license = f.read()
 
 setup(name='nba_stats',
-      version='0.1.8',
+      version='0.1.9',
       description='Contains functions used to create, manage and use a database of nba statistics.',
       long_description=readme,
       author='Chris Ebeling',
@@ -23,7 +23,7 @@ setup(name='nba_stats',
       packages=find_packages(),
       entry_points={
           'console_scripts':[
-              'scrape_games = nba_stats.scripts.scrape_games:main']
+              'scrape_games = nba_stats.scripts.scrape_games:scrape_function']
           },
       install_requires=requirements
       )

@@ -242,8 +242,11 @@ def get_game_soups(games_table, check_tables=['boxscores', 'adv_boxscores', 'lin
     limit -- the max number of new entries in list (default 500)
     """
     current_ids = []
+    start_time=time.time()
+
     for table in check_tables:
-        game_ids = list(set((stats_db.read_table(table).game_id)))
+        game_ids = list((stats_db.read_table(get_str='SELECT DISTINCT game_id from {};'.format(table)).game_id))
+        # game_ids = list((stats_db.read_table(table,['game_id'], distinct_only=True).game_id))
 
         if table == check_tables[0]:
             # for first iteration
@@ -258,6 +261,8 @@ def get_game_soups(games_table, check_tables=['boxscores', 'adv_boxscores', 'lin
     id_bref = zip(new_games.game_id, new_games.bref)
     id_bref_soup = []
     count = 0
+
+    print('Finished prep: ', '{:.1f}'.format(time.time()-start_time), ' seconds since start')
     
     start_time = time.time()
     pbar = progressbar.ProgressBar(max_value=limit,
@@ -295,7 +300,7 @@ def get_game_soups(games_table, check_tables=['boxscores', 'adv_boxscores', 'lin
     
     return id_bref_soup
 
-def add_basic_gamestats(id_bref_soup):
+def add_basic_gamestats(id_bref_soup, commit_changes=True):
     """Adds boxscores and linecores to db, taking list of game_ids, brefs and boxscore soups as input.
     Applies mappings to convert players, teams, etc to relevant id
     
@@ -318,7 +323,7 @@ def add_basic_gamestats(id_bref_soup):
     count=0
     
     for game_id, bref, soup in id_bref_soup:
-        
+
         if soup == None:
             continue
         boxscore = get_boxscore(soup)
@@ -373,9 +378,10 @@ def add_basic_gamestats(id_bref_soup):
         adv_boxscores_df = stats_db.apply_mappings(adv_boxscores_df, 'players', ['player'], 'bref')
     linescores_df = stats_db.apply_mappings(linescores_df, 'teams', ['team'])
 
-    stats_db.add_to_db(boxscores_df, 'boxscores', 'game_id')
-    stats_db.add_to_db(adv_boxscores_df, 'adv_boxscores', 'game_id')
-    stats_db.add_to_db(linescores_df, 'linescores', 'game_id')
+    if commit_changes:
+        stats_db.add_to_db(boxscores_df, 'boxscores', 'game_id')
+        stats_db.add_to_db(adv_boxscores_df, 'adv_boxscores', 'game_id')
+        stats_db.add_to_db(linescores_df, 'linescores', 'game_id')
     
     print('Average run time of soup extraction: %s' % ((end_time - start_time)/length))
 
@@ -390,7 +396,7 @@ def get_boxscore(boxscore_soup, advanced=False):
     '''
     # start_time = time.time()
     table_dict = {}
-    re_match = 'all_box_[a-z]{3}_advanced' if advanced else 'all_box_[a-z]{3}_basic'
+    re_match = 'all_box-[A-Z]{3}-game-advanced' if advanced else 'all_box-[A-Z]{3}-game-basic'
     re_compile = re.compile(re_match)
     find_team_regex = '(?<=all_box_)[a-z]{3}(?=_advanced)' if advanced else '(?<=all_box_)[a-z]{3}(?=_basic)'
     

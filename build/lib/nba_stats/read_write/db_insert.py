@@ -90,7 +90,7 @@ class SqlDataframes(object):
         if return_results:
             return cursor.fetchall()
         
-    def read_table(self, table_name=None, columns=None, get_str=None):
+    def read_table(self, table_name=None, columns=None, get_str=None, distinct_only=False):
         "Returns the given table, all columns if none given"
         assert type(columns) == list or columns == None, 'Columns must be given in list, not %s' % type(columns)
 
@@ -98,7 +98,8 @@ class SqlDataframes(object):
             sql_string = get_str
         else:            
             columns_str = "*" if columns == None else ', '.join(columns) 
-            sql_string = "SELECT %s FROM %s;" % (columns_str, table_name)
+            distinct_str = ' DISTINCT ' if distinct_only else ''
+            sql_string = "SELECT %s%s FROM %s;" % (distinct_str, columns_str, table_name)
 
         cursor = self.conn.cursor()
 
