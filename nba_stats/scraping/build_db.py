@@ -143,17 +143,18 @@ def get_boxscore_htmls_month(year, month, headers=None, url_template=None):
             return None
         except:
             raise
+            
+        if sum(boxscores_month['visitor_pts'] == '') + sum(boxscores_month['home_pts'] == '') == 0:
+            drop_columns = ['attendance', 'box_score_text', 'game_remarks', 'overtimes']
+            boxscores_month.drop(drop_columns, inplace=True, axis=1)
+            boxscores_month.rename(columns={'game_start_time':'start_time', 'home_team_name':'home_team', 'visitor_team_name':'visitor_team'}, inplace=True)
+            boxscores_month.date_game = boxscores_month.date_game.apply(lambda x: dt.datetime.strptime(x, '%a, %b %d, %Y').date().strftime('%Y-%m-%d'))
+            if 'start_time' in boxscores_month.columns:
+                boxscores_month.start_time = boxscores_month.start_time.apply(lambda x: column_time(x))
+            for home_visitor in ['home','visitor']:
+                boxscores_month[home_visitor+'_pts'] = boxscores_month[home_visitor+'_pts'].astype(int)
 
-        drop_columns = ['attendance', 'box_score_text', 'game_remarks', 'overtimes']
-        boxscores_month.drop(drop_columns, inplace=True, axis=1)
-        boxscores_month.rename(columns={'game_start_time':'start_time', 'home_team_name':'home_team', 'visitor_team_name':'visitor_team'}, inplace=True)
-        boxscores_month.date_game = boxscores_month.date_game.apply(lambda x: dt.datetime.strptime(x, '%a, %b %d, %Y').date().strftime('%Y-%m-%d'))
-        if 'start_time' in boxscores_month.columns:
-            boxscores_month.start_time = boxscores_month.start_time.apply(lambda x: column_time(x))
-        for home_visitor in ['home','visitor']:
-            boxscores_month[home_visitor+'_pts'] = boxscores_month[home_visitor+'_pts'].astype(int)
-
-        return boxscores_month
+            return boxscores_month
 
 def get_boxscore_htmls_year(year, regular_length=True, crawl_sleep=True, season_teams=SEASON_TEAMS, playoff_teams=PLAYOFF_TEAMS):
     '''Returns the html links for games of a given season.
@@ -168,7 +169,10 @@ def get_boxscore_htmls_year(year, regular_length=True, crawl_sleep=True, season_
     for month in months:
         if crawl_sleep:
             time.sleep(CRAWL_DELAY)
-        month_games = get_boxscore_htmls_month(year, month)
+        try:
+            month_games = get_boxscore_htmls_month(year, month)
+        except:
+            print('Error on Season: {}, Month {}'.format(year, month))
         
         if isinstance(month_games, pd.DataFrame):
             first_game_date = dt.datetime.strptime(re.findall('[0-9]{8}', month_games['bref'][0])[0],"%Y%m%d")

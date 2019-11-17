@@ -18,7 +18,7 @@ def scrape_function():
     for i in range(args.loops):
         print(i+1)
         print('running game soups')
-        id_bref_soup = get_game_soups(games_table, limit=args.count_max)
+        id_bref_soup = get_game_soups(games_table, limit=args.count_max, check_tables=['boxscores'])
         if not id_bref_soup:
             break
         add_basic_gamestats(id_bref_soup, commit_changes=args.action)

@@ -143,17 +143,18 @@ def get_boxscore_htmls_month(year, month, headers=None, url_template=None):
             return None
         except:
             raise
+            
+        if sum(boxscores_month['visitor_pts'] == '') + sum(boxscores_month['home_pts'] == '') == 0:
+            drop_columns = ['attendance', 'box_score_text', 'game_remarks', 'overtimes']
+            boxscores_month.drop(drop_columns, inplace=True, axis=1)
+            boxscores_month.rename(columns={'game_start_time':'start_time', 'home_team_name':'home_team', 'visitor_team_name':'visitor_team'}, inplace=True)
+            boxscores_month.date_game = boxscores_month.date_game.apply(lambda x: dt.datetime.strptime(x, '%a, %b %d, %Y').date().strftime('%Y-%m-%d'))
+            if 'start_time' in boxscores_month.columns:
+                boxscores_month.start_time = boxscores_month.start_time.apply(lambda x: column_time(x))
+            for home_visitor in ['home','visitor']:
+                boxscores_month[home_visitor+'_pts'] = boxscores_month[home_visitor+'_pts'].astype(int)
 
-        drop_columns = ['attendance', 'box_score_text', 'game_remarks', 'overtimes']
-        boxscores_month.drop(drop_columns, inplace=True, axis=1)
-        boxscores_month.rename(columns={'game_start_time':'start_time', 'home_team_name':'home_team', 'visitor_team_name':'visitor_team'}, inplace=True)
-        boxscores_month.date_game = boxscores_month.date_game.apply(lambda x: dt.datetime.strptime(x, '%a, %b %d, %Y').date().strftime('%Y-%m-%d'))
-        if 'start_time' in boxscores_month.columns:
-            boxscores_month.start_time = boxscores_month.start_time.apply(lambda x: column_time(x))
-        for home_visitor in ['home','visitor']:
-            boxscores_month[home_visitor+'_pts'] = boxscores_month[home_visitor+'_pts'].astype(int)
-
-        return boxscores_month
+            return boxscores_month
 
 def get_boxscore_htmls_year(year, regular_length=True, crawl_sleep=True, season_teams=SEASON_TEAMS, playoff_teams=PLAYOFF_TEAMS):
     '''Returns the html links for games of a given season.
@@ -168,7 +169,10 @@ def get_boxscore_htmls_year(year, regular_length=True, crawl_sleep=True, season_
     for month in months:
         if crawl_sleep:
             time.sleep(CRAWL_DELAY)
-        month_games = get_boxscore_htmls_month(year, month)
+        try:
+            month_games = get_boxscore_htmls_month(year, month)
+        except:
+            print('Error on Season: {}, Month {}'.format(year, month))
         
         if isinstance(month_games, pd.DataFrame):
             first_game_date = dt.datetime.strptime(re.findall('[0-9]{8}', month_games['bref'][0])[0],"%Y%m%d")
@@ -232,7 +236,7 @@ def get_season_gameno(games_df, regular_length=True):
 
     return season_games_df[['bref','game_id', 'home_gameno', 'visitor_gameno']]
 
-def get_game_soups(games_table, check_tables=['boxscores', 'adv_boxscores', 'linescores'], limit=500, crawl_sleep=True, max_errors=3):
+def get_game_soups(games_table, check_tables=['boxscores', 'fourfactors'], limit=500, crawl_sleep=True, max_errors=3):
     """Returns a list containing the game id, bref and soup of all games in games table not already in check tables.
     Will only add game to the list if it has not been already added to each check table.
     
@@ -306,9 +310,7 @@ def add_basic_gamestats(id_bref_soup, commit_changes=True):
     
     Keyword arguments:
     id_bref_soup -- A list of tuples, contains game id, bref, boxscore soup"""
-    boxscores = []
-    adv_boxscores = []
-    linescores = []
+    boxscores, adv_boxscores, linescores, fourfactors = [], [], [], []
     
     length = len(id_bref_soup)
     pbar = progressbar.ProgressBar(max_value=length,
@@ -330,6 +332,7 @@ def add_basic_gamestats(id_bref_soup, commit_changes=True):
         adv_boxscore = get_boxscore(soup, True)
         try:
             linescore = get_linescore(soup)
+            fourfactor = get_linescore(soup, table_type='four_factors')
         except Exception as e:
             print(game_id, bref)
             raise
@@ -345,12 +348,13 @@ def add_basic_gamestats(id_bref_soup, commit_changes=True):
                 # df.loc[0,'game_id'] = game_id
             # else:
             #     df.loc[:,'game_id'] = game_id
-        if linescore.empty:
-            print(print("\nMissing a linescore. game_id: %s, bref: %s" % (game_id, bref)))
+        if linescore.empty or fourfactor.empty:
+            print(print("\nMissing a linescore. Linescore empty: %s, FourFactors empty: %s. game_id: %s, bref: %s" % 
+                (linescore.empty, fourfactor.empty, game_id, bref)))
             # df.loc[0,'game_id'] = game_id
         # else:
         #     df.loc[:,'game_id'] = game_id
-        for df in [boxscore, adv_boxscore, linescore]:
+        for df in [boxscore, adv_boxscore, linescore, fourfactor]:
             if len(df.index) > 0:
                 df.loc[:,'game_id'] = game_id
             else:
@@ -359,6 +363,7 @@ def add_basic_gamestats(id_bref_soup, commit_changes=True):
         boxscores.append(boxscore)
         adv_boxscores.append(adv_boxscore)
         linescores.append(linescore)
+        fourfactors.append(fourfactor)
         
         count+=1
         pbar.update(count)
@@ -368,6 +373,7 @@ def add_basic_gamestats(id_bref_soup, commit_changes=True):
     boxscores_df = pd.concat(boxscores, sort=False).reset_index(drop=True)
     adv_boxscores_df = pd.concat(adv_boxscores, sort=False).reset_index(drop=True)
     linescores_df = pd.concat(linescores, sort=False).reset_index(drop=True)
+    fourfactors_df = pd.concat(fourfactors, sort=False).reset_index(drop=True)
     
     pbar.finish()
 
@@ -377,11 +383,13 @@ def add_basic_gamestats(id_bref_soup, commit_changes=True):
     if 'player' in adv_boxscores_df.columns:
         adv_boxscores_df = stats_db.apply_mappings(adv_boxscores_df, 'players', ['player'], 'bref')
     linescores_df = stats_db.apply_mappings(linescores_df, 'teams', ['team'])
+    fourfactors_df = stats_db.apply_mappings(fourfactors_df, 'teams', ['team'])
 
     if commit_changes:
         stats_db.add_to_db(boxscores_df, 'boxscores', 'game_id')
         stats_db.add_to_db(adv_boxscores_df, 'adv_boxscores', 'game_id')
         stats_db.add_to_db(linescores_df, 'linescores', 'game_id')
+        stats_db.add_to_db(fourfactors_df, 'fourfactors', 'game_id')
     
     print('Average run time of soup extraction: %s' % ((end_time - start_time)/length))
 
