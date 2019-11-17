@@ -1,6 +1,6 @@
 Metadata-Version: 1.1
 Name: nba-stats
-Version: 0.1.12
+Version: 0.1.13
 Summary: Contains functions used to create, manage and use a database of nba statistics.
 Home-page: UNKNOWN
 Author: Chris Ebeling

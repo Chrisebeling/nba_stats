@@ -448,7 +448,7 @@ def get_boxscore(boxscore_soup, advanced=False):
     
     return boxscore
 
-def get_linescore(boxscore_soup, table_type):
+def get_linescore(boxscore_soup, table_type='line_score'):
     '''Returns a df of the basic linescore from the boxscore soup.
     Will contain any number of OTs and the total score.
     
