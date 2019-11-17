@@ -143,7 +143,7 @@ def get_boxscore_htmls_month(year, month, headers=None, url_template=None):
             return None
         except:
             raise
-            
+
         if sum(boxscores_month['visitor_pts'] == '') + sum(boxscores_month['home_pts'] == '') == 0:
             drop_columns = ['attendance', 'box_score_text', 'game_remarks', 'overtimes']
             boxscores_month.drop(drop_columns, inplace=True, axis=1)
@@ -448,7 +448,7 @@ def get_boxscore(boxscore_soup, advanced=False):
     
     return boxscore
 
-def get_linescore(boxscore_soup):
+def get_linescore(boxscore_soup, table_type):
     '''Returns a df of the basic linescore from the boxscore soup.
     Will contain any number of OTs and the total score.
     
@@ -456,22 +456,30 @@ def get_linescore(boxscore_soup):
     boxscore_soup -- the soup object of the boxscore url
     '''
     teams = pd.Series(get_away_home_teams(boxscore_soup))
-    table = boxscore_soup.find('div',{'id':'all_line_score'})
+    table = boxscore_soup.find('div',{'id':'all_' + table_type})
     if not table:
         return pd.DataFrame()
     full_table = include_comments(table)
     rows = full_table.find_all('tr')
     table_rows = []
-    possible_headers = [str(x) for x in [1,2,3,4,'T']]
+    
+    if table_type == 'line_score':
+        possible_headers = [str(x) for x in [1,2,3,4,'T']]
+    else:
+        possible_headers = [str(x) for x in ['Pace', 'eFG%', 'TOV%', 'ORB%', 'FT/FGA', 'ORtg']]
+        
     for row in rows:
         if not row.find_all('td'):
             if 'class' in row.attrs:
                 raw_header = [x.text for x in row.find_all()]
                 header = ['team'] + [x for x in raw_header if x in possible_headers or 'OT' in x]
         else:
-            table_rows.append([x.text for x in row.find_all('td')])
+            table_rows.append([x.text for x in row.find_all(['td','th'])])
     
-    header = ['Q' + column if re.match("^[1-4]$", column) else column for column in header]
+    if table_type == 'line_score':
+        header = ['Q' + column if re.match("^[1-4]$", column) else column for column in header]
+    else:
+        header = ['ft_rate' if column == 'FT/FGA' else column.lower().replace('%','') for column in header]
     boxscore_df = pd.DataFrame(table_rows, columns = header)
     boxscore_df.team = teams
 
