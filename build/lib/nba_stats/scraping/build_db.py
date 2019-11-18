@@ -9,6 +9,7 @@ import pandas as pd
 import numpy as np
 import mysql.connector as sql
 import progressbar
+import logging
 from IPython.display import clear_output
 
 from nba_stats.scraping.base_functions import get_soup, get_bref_soup, get_bref_tables
@@ -34,6 +35,16 @@ PLAYOFF_TEAMS = {1954: 6,
 
 stats_db = SqlDataframes(_host="nba-stats-inst.clmw4mwgj0eg.ap-southeast-2.rds.amazonaws.com", _password="23cHcGN9PNxxUKtAzGp28kJ7u")
 
+logger_build = logging.getLogger(__name__)
+# handler = logging.StreamHandler()
+# file_handler = logging.FileHandler("logging\\%s.log" % dt.datetime.today().strftime('%Y%m%d'))
+# formatter = logging.Formatter('%(asctime)s %(name)-12s %(levelname)-10s %(message)s')
+# for a_handler in [handler, file_handler]:
+#     a_handler.setFormatter(formatter)
+# logger_build.addHandler(handler)
+# logger_build.addHandler(file_handler)
+# logger_build.setLevel(logging.INFO)
+
 def get_players_urls(players_url=None):
     '''Returns soup objects of bref player pages (a-z)
 
@@ -56,7 +67,7 @@ def get_players_urls(players_url=None):
             http_error_count += 1
     end_time = time.time()
     
-    print('Per run: ', (end_time - start_time)/(success_count+http_error_count), ', Successes: ', success_count, ', Failures: ', http_error_count)
+    logger_build.info('Per run: ', (end_time - start_time)/(success_count+http_error_count), ', Successes: ', success_count, ', Failures: ', http_error_count)
     return players_soups
 
 def get_all_players(players_soups):
@@ -127,7 +138,7 @@ def get_boxscore_htmls_month(year, month, headers=None, url_template=None):
     url_template -- override template to use for url (default None)
     '''
     assert type(year) == int and type(month) == int, 'Year and month must be int'
-    assert year <= CURRENT_YEAR, 'Year must be before %s' % CURRENT_YEAR
+    assert year <= CURRENT_YEAR + 1, 'Year must be before %s' % (CURRENT_YEAR + 1)
     assert month >= 1 and month <= 12, 'Month must be between 1 and 12'
     
     if url_template == None:
@@ -139,22 +150,25 @@ def get_boxscore_htmls_month(year, month, headers=None, url_template=None):
         try:
             boxscores_month = get_bref_tables(soup,['all_schedule'],'box_score_text')['all_schedule']
         except KeyError as e:
-            print("Games table does not exist. Year: %s, month: %s." % (year, month))
+            logger_build.info("Games table does not exist. Year: %s, month: %s." % (year, month))
             return None
         except:
             raise
 
-        if sum(boxscores_month['visitor_pts'] == '') + sum(boxscores_month['home_pts'] == '') == 0:
-            drop_columns = ['attendance', 'box_score_text', 'game_remarks', 'overtimes']
-            boxscores_month.drop(drop_columns, inplace=True, axis=1)
-            boxscores_month.rename(columns={'game_start_time':'start_time', 'home_team_name':'home_team', 'visitor_team_name':'visitor_team'}, inplace=True)
-            boxscores_month.date_game = boxscores_month.date_game.apply(lambda x: dt.datetime.strptime(x, '%a, %b %d, %Y').date().strftime('%Y-%m-%d'))
-            if 'start_time' in boxscores_month.columns:
-                boxscores_month.start_time = boxscores_month.start_time.apply(lambda x: column_time(x))
-            for home_visitor in ['home','visitor']:
-                boxscores_month[home_visitor+'_pts'] = boxscores_month[home_visitor+'_pts'].astype(int)
+        drop_columns = ['attendance', 'box_score_text', 'game_remarks', 'overtimes']
+        boxscores_month.drop(drop_columns, inplace=True, axis=1)
+        boxscores_month.rename(columns={'game_start_time':'start_time', 'home_team_name':'home_team', 'visitor_team_name':'visitor_team'}, inplace=True)
+        boxscores_month.date_game = boxscores_month.date_game.apply(lambda x: dt.datetime.strptime(x, '%a, %b %d, %Y').date().strftime('%Y-%m-%d'))
+        if 'start_time' in boxscores_month.columns:
+            boxscores_month.start_time = boxscores_month.start_time.apply(lambda x: column_time(x))
 
-            return boxscores_month
+        # keep only games that have been played
+        boxscores_month = boxscores_month[boxscores_month.loc[:,'home_pts'] != '']
+        
+        for home_visitor in ['home','visitor']:
+            boxscores_month[home_visitor+'_pts'] = boxscores_month[home_visitor+'_pts'].astype(int)
+
+        return boxscores_month
 
 def get_boxscore_htmls_year(year, regular_length=True, crawl_sleep=True, season_teams=SEASON_TEAMS, playoff_teams=PLAYOFF_TEAMS):
     '''Returns the html links for games of a given season.
@@ -172,9 +186,9 @@ def get_boxscore_htmls_year(year, regular_length=True, crawl_sleep=True, season_
         try:
             month_games = get_boxscore_htmls_month(year, month)
         except:
-            print('Error on Season: {}, Month {}'.format(year, month))
+            logger_build.info('Error on Season: {}, Month {}'.format(year, month))
         
-        if isinstance(month_games, pd.DataFrame):
+        if isinstance(month_games, pd.DataFrame) and len(month_games) > 0:
             first_game_date = dt.datetime.strptime(re.findall('[0-9]{8}', month_games['bref'][0])[0],"%Y%m%d")
             assert first_game_date.month == month, 'Month error. First game: %s, Expected: %s' % (first_game_date.month, month)
             # for games in year before 'season year' actual year of game will be year before
@@ -260,13 +274,13 @@ def get_game_soups(games_table, check_tables=['boxscores', 'fourfactors'], limit
     
     new_games = games_table[~games_table.game_id.isin(current_ids)]
     if len(new_games) == 0:
-        print("No new games to add to database")
+        logger_build.info("No new games to add to database")
         return []
     id_bref = zip(new_games.game_id, new_games.bref)
     id_bref_soup = []
     count = 0
 
-    print('Finished prep: ', '{:.1f}'.format(time.time()-start_time), ' seconds since start')
+    logger_build.info('Finished prep: {:.1f} seconds since start'.format(time.time()-start_time))
     
     start_time = time.time()
     pbar = progressbar.ProgressBar(max_value=limit,
@@ -284,12 +298,12 @@ def get_game_soups(games_table, check_tables=['boxscores', 'fourfactors'], limit
                 soup = get_soup(BREF_HTML + bref, timeout=10)
             except Exception as e:
                 if handshake_errors < max_errors:
-                    print("Scraping soup error: ", e)
+                    logger_build.error("Scraping soup error: ", e)
                     handshake_errors += 1
                     time.sleep(60)
                     continue
                 else:
-                    print("Exceeded handshake error limit. Errors: %s, Max: %s" % (handshake_errors, max_errors))
+                    logger_build.error("Exceeded handshake error limit. Errors: %s, Max: %s" % (handshake_errors, max_errors))
                     raise
 
             id_bref_soup.append((game_id, bref, soup))
@@ -300,7 +314,7 @@ def get_game_soups(games_table, check_tables=['boxscores', 'fourfactors'], limit
     pbar.finish()
     end_time = time.time()
     
-    print('Average run time excluding sleep: %s' % ((end_time - start_time-count*CRAWL_DELAY)/count))
+    logger_build.info('Average run time excluding sleep: %s' % ((end_time - start_time-count*CRAWL_DELAY)/count))
     
     return id_bref_soup
 
@@ -334,7 +348,7 @@ def add_basic_gamestats(id_bref_soup, commit_changes=True):
             linescore = get_linescore(soup)
             fourfactor = get_linescore(soup, table_type='four_factors')
         except Exception as e:
-            print(game_id, bref)
+            logger_build.error(game_id, bref)
             raise
         
         for df in [boxscore, adv_boxscore]:
@@ -342,15 +356,15 @@ def add_basic_gamestats(id_bref_soup, commit_changes=True):
                 year_regex = re.findall("(?<=boxscores.)[0-9]{4}", bref)
                 if year_regex:
                     if int(year_regex[0]) > 1982:
-                        print("\nMissing a boxscore. game_id: %s, bref: %s" % (game_id, bref))
+                        logger_build.error("Missing a boxscore. game_id: %s, bref: %s" % (game_id, bref))
                 else:
-                    print("\nMissing a boxscore. Bref format strange. game_id: %s, bref: %s" % (game_id, bref))
+                    logger_build.error("Missing a boxscore. Bref format strange. game_id: %s, bref: %s" % (game_id, bref))
                 # df.loc[0,'game_id'] = game_id
             # else:
             #     df.loc[:,'game_id'] = game_id
         if linescore.empty or fourfactor.empty:
-            print(print("\nMissing a linescore. Linescore empty: %s, FourFactors empty: %s. game_id: %s, bref: %s" % 
-                (linescore.empty, fourfactor.empty, game_id, bref)))
+            logger_build.error("Missing a linescore. Linescore empty: %s, FourFactors empty: %s. game_id: %s, bref: %s" % 
+                (linescore.empty, fourfactor.empty, game_id, bref))
             # df.loc[0,'game_id'] = game_id
         # else:
         #     df.loc[:,'game_id'] = game_id
@@ -391,7 +405,7 @@ def add_basic_gamestats(id_bref_soup, commit_changes=True):
         stats_db.add_to_db(linescores_df, 'linescores', 'game_id')
         stats_db.add_to_db(fourfactors_df, 'fourfactors', 'game_id')
     
-    print('Average run time of soup extraction: %s' % ((end_time - start_time)/length))
+    logger_build.info('Average run time of soup extraction: %s' % ((end_time - start_time)/length))
 
 def get_boxscore(boxscore_soup, advanced=False):
     '''Returns a df containing boxscore data for both teams, given the soup of the boxscore url.
@@ -504,7 +518,7 @@ def get_series_gameno(boxscore_soup, boxscore_html):
                         # don't change this to bref, is in webpage as href
                         game_html = html['href']
                     except:
-                        print(boxscore_html)
+                        logger_build.error(boxscore_html)
             
             if game_html == boxscore_html: 
                 game_date = table.find('tr',{'class':'date'})

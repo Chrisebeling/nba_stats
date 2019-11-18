@@ -2,6 +2,17 @@ import datetime as dt
 import pandas as pd
 import numpy as np
 import mysql.connector as sql
+import logging
+
+logger_insert = logging.getLogger(__name__)
+# handler = logging.StreamHandler()
+# file_handler = logging.FileHandler("logging\\%s.log" % dt.datetime.today().strftime('%Y%m%d'))
+# formatter = logging.Formatter('%(asctime)s %(name)-12s %(levelname)-10s %(message)s')
+# for a_handler in [handler, file_handler]:
+#     a_handler.setFormatter(formatter)
+# logger_insert.addHandler(handler)
+# logger_insert.addHandler(file_handler)
+# logger_insert.setLevel(logging.INFO)
 
 class SqlDataframes(object):
     def __init__(self, _password, _user="root", _db='nba_stats', _host=None, _port=3306,_unix=None):
@@ -31,7 +42,7 @@ class SqlDataframes(object):
         for df_column in df.columns:
             if df_column not in columns:
                 check = False
-                print('Error: ', df_column, ' not in table schema')
+                logger_insert.error('Error: {} not in table schema'.format(df_column))
 
         return check
         
@@ -75,13 +86,13 @@ class SqlDataframes(object):
             df_to_add = df.copy()
             
         if not df_to_add.empty:
-            print('Adding %s entries to table %s' % (len(df_to_add), table_name))
+            logger_insert.info('Adding %s entries to table %s' % (len(df_to_add), table_name))
             sql_str = self.create_sql_str(df_to_add, table_name)
 
             cursor = self.conn.cursor()
             cursor.execute(sql_str)
         else:
-            print('No new entries. No alterations made.')
+            logger_insert.info('No new entries. No alterations made.')
         
     def str_to_db(self, string, return_results=False):
         """Executes the given string on the connection."""
@@ -106,7 +117,7 @@ class SqlDataframes(object):
         try:
             cursor.execute(sql_string)
         except sql.errors.ProgrammingError:
-            print(sql_string)
+            logger_insert.error(sql_string)
             raise
             
         table_columns = cursor.column_names
@@ -169,7 +180,7 @@ class SqlDataframes(object):
             if x == '' or x == "NULL":
                 return "NULL"
             elif stripped_x not in id_mapping.keys():
-                print('%s not in mapping keys' % x)
+                logger_insert.info('%s not in mapping keys' % x)
                 return "NULL"  
             else:
                 return id_mapping[stripped_x]
