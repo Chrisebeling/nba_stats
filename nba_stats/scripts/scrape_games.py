@@ -1,13 +1,14 @@
 import argparse
 import logging
 import datetime as dt
+import os
 
 from nba_stats.read_write.db_insert import SqlDataframes
 from nba_stats.scraping.build_db import get_boxscore_htmls_year, get_game_soups,add_basic_gamestats
 
 logger = logging.getLogger()
 handler = logging.StreamHandler()
-file_handler = logging.FileHandler("logs\\%s.log" % dt.datetime.today().strftime('%Y%m%d'))
+file_handler = logging.FileHandler(os.path.join("logs","{}.log".format(dt.datetime.today().strftime('%Y%m%d'))))
 formatter = logging.Formatter('%(asctime)s %(name)-12s %(levelname)-10s %(message)s')
 for a_handler in [handler, file_handler]:
     a_handler.setFormatter(formatter)
