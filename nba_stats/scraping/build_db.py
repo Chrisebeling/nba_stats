@@ -499,35 +499,82 @@ def get_linescore(boxscore_soup, table_type='line_score'):
 
     return boxscore_df.set_index('team').apply(pd.to_numeric).reset_index()
 
-def get_series_gameno(boxscore_soup, boxscore_html):
-    '''Returns the number of the game in the relevent series.
-    If the game is not in a series, ie regular game, then returns None.
-    
-    Keyword arguments:
-    boxscore_soup -- the soup object of the boxscore url
-    boxscore_html -- the bref link for the given game
+def get_series_games(soup):
+    '''Returns a df containing each game of the series given the bref soup of the series.
+    Returns game no, game_id, series_id
+
+    Keyword Arguments:
+    soup -- the soup of the bref series url
     '''
-    boxscore_soup_complete = include_comments(boxscore_soup)
-    series_table = boxscore_soup_complete.find('div',{'class':'game_summaries playoffs compressed'})
-    if series_table:
-        for table in series_table.find_all('tbody'):
-            for html in table.find_all('a'):
-                # there are multiple a objects. The desired one is labelled Final
-                if html.text == 'Final':
-                    try:
-                        # don't change this to bref, is in webpage as href
-                        game_html = html['href']
-                    except:
-                        logger_build.error(boxscore_html)
-            
-            if game_html == boxscore_html: 
-                game_date = table.find('tr',{'class':'date'})
-                game_no = int(game_date.text.split(',')[0][-1])
-                assert game_no >= 1 and game_no <= 7, 'Game: %s. Game no must be between 1 and 7.' % game_no
-                
-                return game_no
-            
-        raise Exception('No matches in series match current game. Link: %s' % boxscore_html)
+    series_games = {}
+
+    for div in soup.find_all('div',{'class':'game_summary expanded nohover'}):
+        for row in div.find_all('tr',{'class':'date'}):
+            game_str = row.text.split(',')[0]
+            if re.match('^Game [1-9]$',game_str):
+                game_no = int(game_str[5])
+            else:
+                raise('Game no str not readable: {}'.format(row))
+
+        for td in div.find_all('td',{'class':'right gamelink'}):
+            bref = td.find('a')['href']
+
+        series_games[game_no] = bref
+        
+    return pd.DataFrame({'bref':series_games}).reset_index().rename(columns={'index':'game_no'})
+
+def get_playoff_games(season_range):
+    '''Returns a df containing details of all playoff games in the desired seasons.
+    Converts bref and series name to the relevant ids.
+    Columns returned: game_no, game_id, series_id.
+    
+    Keyword Arguments:
+    season_range -- A tuple, only seasons in this range will be returned.
+    '''
+    assert type(season_range) == tuple, 'season_range must be a tuple'
+    assert len(season_range) == 2, 'season_range must contain 2 elements'
+    assert season_range[0] <= season_range[1], 'first season must be before second season in range'
+    
+    playoffs_soup = get_bref_soup('/playoffs/series.html')
+    playoffs_table = get_bref_tables(playoffs_soup, ['div_playoffs_series'], 'series')['div_playoffs_series'].loc[:,['bref','series','season']].dropna()
+    playoffs_table.loc[:,'season'] = playoffs_table.loc[:,'season'].astype(int)
+    
+    count = 0
+    all_series = []
+    
+    playoffs_table_restricted = playoffs_table[(playoffs_table.loc[:,'season'] >= season_range[0]) & (playoffs_table.loc[:,'season'] <= season_range[1])]
+    
+    pbar = progressbar.ProgressBar(max_value=len(playoffs_table_restricted),
+                                   widgets=[
+                                    ' [', progressbar.Timer(), '] ',
+                                    progressbar.Percentage(),
+                                    progressbar.Bar(),
+                                    ' (', progressbar.ETA(), ') ',
+                                ])
+    pbar.start()
+    for idx, row in playoffs_table_restricted.iterrows():
+        series_soup = get_bref_soup(row[0])
+        series_games = get_series_games(series_soup)
+
+        series_games.loc[:,'series_name'] = row[1]
+
+        all_series.append(series_games)
+        count+=1
+        pbar.update(count)
+    
+    pbar.finish()
+    
+    series_df = pd.concat(all_series)
+
+    series_ids = stats_db.apply_mappings(series_df, 'games', ['bref'], 'bref').rename(columns={'bref_id':'game_id'})
+    series_ids = stats_db.apply_mappings(series_ids, 'series', ['series_name'], 'series_name').rename(columns={'series_name_id':'series_id'})
+
+    scraped_ids = list(series_ids.loc[:,'game_id'])
+    table_ids = list((stats_db.read_table('games',['game_id'], distinct_only=True).game_id))
+    to_add = [game_id for game_id in scraped_ids if game_id in table_ids]
+    series_ids = series_ids[series_ids.loc[:,'game_id'].isin(to_add)]
+    
+    return series_ids
 
 def get_away_home_teams(soup):
     teams = []
