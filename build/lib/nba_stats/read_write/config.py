@@ -10,7 +10,6 @@ def update_dbconfig(config_dict, config_file='databaseconfig.ini', section='mysq
     '''
     config = configparser.ConfigParser(allow_no_value=True)
     config.read(config_file)
-    print(config.sections())
     
     for key in config_dict.keys():
         assert key in config[section], 'key must be in current config. {} not in current config'.format(key)
