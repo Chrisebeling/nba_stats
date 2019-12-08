@@ -7,3 +7,4 @@ beautifulsoup4>=4.8.1
 mysql-connector-python
 progressbar2>=3.47.0
 ipython
+configparser>=4.0.2
