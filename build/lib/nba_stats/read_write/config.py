@@ -20,7 +20,7 @@ def update_dbconfig(config_dict, config_file='databaseconfig.conf', section='mys
     cfg_file.close()
 
 def get_dbconfig(config_file='databaseconfig.conf', section='mysql'):
-	config = configparser.ConfigParser(allow_no_value=True)
+    config = configparser.ConfigParser(allow_no_value=True)
     config.read(config_file)
 
     print(config[section])
