@@ -9,7 +9,7 @@ import mysql.connector as sql
 import configparser
 
 cfg = configparser.ConfigParser(allow_no_value=True)
-cfg.read('databaseconfig.ini')
+cfg.read('databaseconfig.conf')
 HOST = cfg['mysql']['host'] 
 PORT = int(cfg['mysql']['port'])
 USER = cfg['mysql']['user']

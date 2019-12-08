@@ -1,6 +1,6 @@
 import configparser
 
-def update_dbconfig(config_dict, config_file='databaseconfig.ini', section='mysql'):
+def update_dbconfig(config_dict, config_file='databaseconfig.conf', section='mysql'):
     '''Update settings in database config file.
 
     Keyword Arguments:
