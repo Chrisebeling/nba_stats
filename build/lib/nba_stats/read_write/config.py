@@ -23,4 +23,6 @@ def get_dbconfig(config_file='databaseconfig.conf', section='mysql'):
     config = configparser.ConfigParser(allow_no_value=True)
     config.read(config_file)
 
-    print(config[section])
+    for option in config.options(section):
+        print("{}:::{}".format(option,
+                               config.get(section, option)))
