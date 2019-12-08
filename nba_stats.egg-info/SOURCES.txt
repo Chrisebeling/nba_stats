@@ -9,6 +9,7 @@ nba_stats.egg-info/requires.txt
 nba_stats.egg-info/top_level.txt
 nba_stats/read_write/__init__.py
 nba_stats/read_write/basic_stats.py
+nba_stats/read_write/config.py
 nba_stats/read_write/db_insert.py
 nba_stats/read_write/functions.py
 nba_stats/scraping/__init__.py

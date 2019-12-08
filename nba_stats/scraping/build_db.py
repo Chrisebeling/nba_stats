@@ -33,7 +33,7 @@ PLAYOFF_TEAMS = {1954: 6,
                 1977: 12,
                 1984: 16}
 
-stats_db = SqlDataframes(_host="nba-stats-inst.clmw4mwgj0eg.ap-southeast-2.rds.amazonaws.com", _password="23cHcGN9PNxxUKtAzGp28kJ7u")
+stats_db = SqlDataframes()
 
 logger_build = logging.getLogger(__name__)
 # handler = logging.StreamHandler()

@@ -3,6 +3,15 @@ import pandas as pd
 import numpy as np
 import mysql.connector as sql
 import logging
+import configparser
+
+cfg = configparser.ConfigParser(allow_no_value=True)
+cfg.read('databaseconfig.ini')
+HOST = cfg['mysql']['host'] 
+PORT = int(cfg['mysql']['port'])
+USER = cfg['mysql']['user']
+PASSWORD = cfg['mysql']['password']
+DB = cfg['mysql']['db']
 
 logger_insert = logging.getLogger(__name__)
 # handler = logging.StreamHandler()
@@ -15,7 +24,7 @@ logger_insert = logging.getLogger(__name__)
 # logger_insert.setLevel(logging.INFO)
 
 class SqlDataframes(object):
-    def __init__(self, _password, _user="root", _db='nba_stats', _host=None, _port=3306,_unix=None):
+    def __init__(self, _password=PASSWORD, _user=USER, _db=DB, _host=HOST, _port=PORT,_unix=None):
         if _unix:
             self.conn = sql.connect(
                 unix_socket=_unix,

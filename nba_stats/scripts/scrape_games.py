@@ -2,9 +2,13 @@ import argparse
 import logging
 import datetime as dt
 import os
+import configparser
 
 from nba_stats.read_write.db_insert import SqlDataframes
 from nba_stats.scraping.build_db import get_boxscore_htmls_year, get_game_soups,add_basic_gamestats
+
+cfg = configparser.ConfigParser(allow_no_value=True)
+cfg.read('databaseconfig.ini')
 
 logger = logging.getLogger()
 handler = logging.StreamHandler()
@@ -25,13 +29,14 @@ def scrape_function():
 
     args = parser.parse_args()
 
-    stats_db = SqlDataframes(_host="nba-stats-inst.clmw4mwgj0eg.ap-southeast-2.rds.amazonaws.com", _password="23cHcGN9PNxxUKtAzGp28kJ7u")
+    stats_db = SqlDataframes()
     games_table = stats_db.read_table('games',['game_id','bref'])
 
     for i in range(args.loops):
         logger.info('Current Loop: {}'.format(i+1))
         logger.info('Running game soups...')
-        id_bref_soup = get_game_soups(games_table, limit=args.count_max, check_tables=['boxscores', 'fourfactors'])
+        checktables_cfg = cfg['scraping']['check_tables'].split(',')
+        id_bref_soup = get_game_soups(games_table, limit=args.count_max, check_tables=checktables_cfg)
         if not id_bref_soup:
             break
         add_basic_gamestats(id_bref_soup, commit_changes=args.action)
