@@ -10,7 +10,7 @@ with open('LICENSE') as f:
     license = f.read()
 
 setup(name='nba_stats',
-      version='0.1.25',
+      version='0.1.26',
       description='Contains functions used to create, manage and use a database of nba statistics.',
       long_description=readme,
       author='Chris Ebeling',
@@ -20,6 +20,10 @@ setup(name='nba_stats',
                    'Environment :: Win32 (MS Windows)',
                    'License :: OSI Approved :: MIT License'],
       license=license,
+      package_data={
+                    '': ['*.conf'],
+                    },
+      include_package_data=True,
       packages=find_packages(),
       entry_points={
           'console_scripts':[

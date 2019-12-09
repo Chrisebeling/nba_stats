@@ -1,3 +1,4 @@
+MANIFEST.in
 README.md
 setup.py
 nba_stats/__init__.py
@@ -12,6 +13,7 @@ nba_stats/read_write/basic_stats.py
 nba_stats/read_write/config.py
 nba_stats/read_write/db_insert.py
 nba_stats/read_write/functions.py
+nba_stats/resources/databaseconfig.conf
 nba_stats/scraping/__init__.py
 nba_stats/scraping/base_functions.py
 nba_stats/scraping/build_db.py
