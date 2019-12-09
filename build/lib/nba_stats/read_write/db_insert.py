@@ -3,15 +3,15 @@ import pandas as pd
 import numpy as np
 import mysql.connector as sql
 import logging
-import configparser
 
-cfg = configparser.ConfigParser(allow_no_value=True)
-cfg.read('databaseconfig.conf')
-HOST = cfg['mysql']['host'] 
-PORT = int(cfg['mysql']['port'])
-USER = cfg['mysql']['user']
-PASSWORD = cfg['mysql']['password']
-DB = cfg['mysql']['db']
+from nba_stats.read_write.config import get_dbconfig
+
+cfg = get_dbconfig()
+HOST = cfg['host'] 
+PORT = int(cfg['port'])
+USER = cfg['user']
+PASSWORD = cfg['password']
+DB = cfg['db']
 
 logger_insert = logging.getLogger(__name__)
 # handler = logging.StreamHandler()

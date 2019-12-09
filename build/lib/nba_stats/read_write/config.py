@@ -14,7 +14,6 @@ def set_dbconfig(config_dict, config_file='databaseconfig.conf', section='mysql'
             __name__,
             os.path.join(os.pardir, 'resources', config_file)
         )
-    print(path)
 
     config = configparser.ConfigParser(allow_no_value=True)
     config.read(path)
@@ -35,7 +34,17 @@ def get_dbconfig(config_file='databaseconfig.conf', section='mysql'):
 
     config = configparser.ConfigParser(allow_no_value=True)
     config.read(path)
-    print(path)
+
+    return config[section]
+
+def print_dbconfig(config_file='databaseconfig.conf', section='mysql'):
+    path = pkg_resources.resource_filename(
+            __name__,
+            os.path.join(os.pardir, 'resources', config_file)
+        )
+
+    config = configparser.ConfigParser(allow_no_value=True)
+    config.read(path)
 
     for option in config.options(section):
         print("{}:::{}".format(option,
