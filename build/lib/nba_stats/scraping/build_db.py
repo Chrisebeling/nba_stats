@@ -67,7 +67,11 @@ def get_players_urls(players_url=None):
             http_error_count += 1
     end_time = time.time()
     
-    logger_build.info('Per run: ', (end_time - start_time)/(success_count+http_error_count), ', Successes: ', success_count, ', Failures: ', http_error_count)
+    logger_build.info('Per run: {}, Successes: {}, Failures: {}'.format(
+                                                                                        (end_time - start_time)/(success_count+http_error_count), 
+                                                                                        success_count,
+                                                                                        http_error_count)
+                                                                        )
     return players_soups
 
 def get_all_players(players_soups):
@@ -273,6 +277,9 @@ def get_game_soups(games_table, check_tables=['boxscores', 'fourfactors'], limit
             current_ids = [game_id for game_id in current_ids if game_id in game_ids]
     
     new_games = games_table[~games_table.game_id.isin(current_ids)]
+    # read most recent games first
+    new_games = new_games.sort_values('game_id', ascending=False)
+
     if len(new_games) == 0:
         logger_build.info("No new games to add to database")
         return []
@@ -348,7 +355,7 @@ def add_basic_gamestats(id_bref_soup, commit_changes=True):
             linescore = get_linescore(soup)
             fourfactor = get_linescore(soup, table_type='four_factors')
         except Exception as e:
-            logger_build.error(game_id, bref)
+            logger_build.error('{}, {}'.format(game_id, bref))
             raise
         
         for df in [boxscore, adv_boxscore]:
