@@ -183,7 +183,7 @@ def get_boxscore_htmls_year(year, regular_length=True, crawl_sleep=True, season_
     regular_length -- If False, will not apply assertions on game numbers (default True)
     '''
     season_boxscore_htmls = []
-    months = list(range(8,13))+list(range(1,8))
+    months = list(range(10,13))+list(range(1,10))
     for month in months:
         if crawl_sleep:
             time.sleep(CRAWL_DELAY)
