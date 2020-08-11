@@ -34,7 +34,7 @@ def scrape_games(loops, count_max, action):
             break
         add_basic_gamestats(id_bref_soup, commit_changes=action)
         if i == loops - 1:
-            stats_db = SqlDataframes(_host="nba-stats-inst.clmw4mwgj0eg.ap-southeast-2.rds.amazonaws.com", _password="23cHcGN9PNxxUKtAzGp28kJ7u")
+            stats_db = SqlDataframes()
             games_max = stats_db.read_max('games','game_id')
             boxs_max = stats_db.read_max('boxscores', 'game_id')
             logger.info('FINISHED...Games remaining to scrape: {}'.format(games_max-boxs_max))

@@ -196,7 +196,7 @@ def get_boxscore_htmls_year(year, regular_length=True, crawl_sleep=True, season_
             first_game_date = dt.datetime.strptime(re.findall('[0-9]{8}', month_games['bref'][0])[0],"%Y%m%d")
             assert first_game_date.month == month, 'Month error. First game: %s, Expected: %s' % (first_game_date.month, month)
             # for games in year before 'season year' actual year of game will be year before
-            expected_year = year - 1 if month >= 8 else year
+            expected_year = year - 1 if month >= 10 else year
             assert first_game_date.year == expected_year, 'Year error. First game %s, Expected: %s' % (first_game_date.year, expected_year)
         
             season_boxscore_htmls.append(month_games)
@@ -451,7 +451,7 @@ def get_boxscore(boxscore_soup, advanced=False):
     boxscore = boxscore[boxscore.player != 'Reserves'] 
     
     if advanced:
-        column_drops = ['reason', 'player', 'efg_pct', 'ts_pct', 'fg3a_per_fga_pct', 'fta_per_fga_pct', 'starter', 'team', 'mp']
+        column_drops = ['reason', 'player', 'efg_pct', 'ts_pct', 'fg3a_per_fga_pct', 'fta_per_fga_pct', 'starter', 'team', 'mp','bpm'] #bpm newly added, should add at some point
     else:
         column_drops = ['reason', 'player'] + [header for header in boxscore.keys() if 'pct' in header]
         boxscore['mp'] = boxscore['mp'].apply(lambda x: convert_mp(x))
@@ -461,7 +461,7 @@ def get_boxscore(boxscore_soup, advanced=False):
     boxscore.drop(column_drops, axis=1, inplace=True)
     boxscore.rename(columns={'bref':'player'}, inplace=True)
     for column in boxscore.columns:
-        if column not in non_number:
+        if column not in non_number: 
             boxscore[column] = boxscore[column].apply(lambda x: to_int(x, 'pct' in column))
             
     # end_time = time.time()
@@ -481,7 +481,8 @@ def get_linescore(boxscore_soup, table_type='line_score'):
     if not table:
         return pd.DataFrame()
     full_table = include_comments(table)
-    rows = full_table.find_all('tr')
+    header_row = full_table.find('thead').find_all('tr', class_=lambda x: x != 'over_header')[0]
+    rows = full_table.find('tbody').find_all('tr')
     table_rows = []
     
     if table_type == 'line_score':
@@ -489,19 +490,21 @@ def get_linescore(boxscore_soup, table_type='line_score'):
     else:
         possible_headers = [str(x) for x in ['Pace', 'eFG%', 'TOV%', 'ORB%', 'FT/FGA', 'ORtg']]
         
+    raw_header = [x.text for x in header_row.find_all()]
+    header = ['team'] + [x for x in raw_header if x in possible_headers or 'OT' in x]
     for row in rows:
-        if not row.find_all('td'):
-            if 'class' in row.attrs:
-                raw_header = [x.text for x in row.find_all()]
-                header = ['team'] + [x for x in raw_header if x in possible_headers or 'OT' in x]
-        else:
-            table_rows.append([x.text for x in row.find_all(['td','th'])])
+        table_rows.append([x.text for x in row.find_all(['td','th'])])
     
     if table_type == 'line_score':
         header = ['Q' + column if re.match("^[1-4]$", column) else column for column in header]
     else:
         header = ['ft_rate' if column == 'FT/FGA' else column.lower().replace('%','') for column in header]
-    boxscore_df = pd.DataFrame(table_rows, columns = header)
+    try:
+        boxscore_df = pd.DataFrame(table_rows, columns = header)
+    except Exception as e:
+        print(teams)
+        print(raw_header)
+        raise e
     boxscore_df.team = teams
 
     return boxscore_df.set_index('team').apply(pd.to_numeric).reset_index()
