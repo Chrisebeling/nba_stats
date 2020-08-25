@@ -54,7 +54,10 @@ def update_games(year):
 
     season_boxscore_htmls = get_boxscore_htmls_year(year, regular_length=False)
     games_ids = stats_db.apply_mappings(season_boxscore_htmls, 'teams', ['home_team', 'visitor_team'])
-    stats_db.add_to_db(games_ids, 'games', 'bref')
+    stats_db.add_to_db(games_ids, 'games', 'bref', 'date_game')
+
+    playoffs_ids = get_playoff_games((year, year))
+    stats_db.add_to_db(playoffs_ids, 'playoffgames', 'game_id', 'game_id')
 
 
 def scrape_function():

@@ -68,3 +68,33 @@ def get_bref_tables(soup, desired_tables=True, href_category=None):
         tables[title] = pd.DataFrame(table_dict).transpose()
 
     return tables
+
+def get_table(soup, desired_table, href_column=None):
+    '''Returns the table of a given bref_soup. Works well for loosely defined tables.
+    Where columns are missing in a row, fills with empty columns at the end of row.
+
+    Keyword Arguments
+    soup -- The soup to extract the table from
+    desired_table -- The name of the table to be extracted
+    href_column -- The column to extract an href from (default None)
+    '''
+    table_rows=[]
+
+    table = soup.find('div',{'id':desired_table})
+    header_row = table.find('thead').find_all('tr', class_=lambda x: x != 'over_header')[0]
+    rows = table.find('tbody').find_all('tr', class_=lambda x: x != 'thead')
+
+    header = [x.text for x in header_row.find_all()]
+    exp_cols = len(header)
+
+    for row in rows:
+        row_contents = row.find_all(['td','th'])
+        row_data = [x.text for x in row_contents]
+        missing_cols = exp_cols - len(row_data)
+        row_data += ['']*missing_cols
+        if href_column:
+            row_data.append(row_contents[href_column].find('a')['href'])
+
+        table_rows.append(row_data)
+
+    return pd.DataFrame(table_rows, columns=header+['href'])

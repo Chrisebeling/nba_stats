@@ -74,7 +74,7 @@ class SqlDataframes(object):
 
         return string
     
-    def add_to_db(self, df, table_name, check_column=None):
+    def add_to_db(self, df, table_name, check_column=None, info_column=None):
         '''Adds a df to the db.
         When check_column is set, will only add new entries, using the check column as a cross reference.
         All columns in df must exist in table schema.
@@ -95,7 +95,13 @@ class SqlDataframes(object):
             df_to_add = df.copy()
             
         if not df_to_add.empty:
-            logger_insert.info('Adding %s entries to table %s' % (len(df_to_add), table_name))
+            if info_column:
+                max_add = df_to_add.loc[:,info_column].max()
+                min_add = df_to_add.loc[:,info_column].min()
+                extra_info = '%s range added: %s - %s' % (info_column, min_add, max_add)
+            else:
+                extra_info = ''
+            logger_insert.info('Adding %s entries to table %s. %s' % (len(df_to_add), table_name, extra_info))
             sql_str = self.create_sql_str(df_to_add, table_name)
 
             cursor = self.conn.cursor()

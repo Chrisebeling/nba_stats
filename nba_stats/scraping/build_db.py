@@ -12,7 +12,7 @@ import progressbar
 import logging
 from IPython.display import clear_output
 
-from nba_stats.scraping.base_functions import get_soup, get_bref_soup, get_bref_tables
+from nba_stats.scraping.base_functions import get_soup, get_bref_soup, get_bref_tables, get_table
 from nba_stats.scraping.functions import split_first_last, get_split, convert_feet, combine_columns, is_starter, to_int, convert_mp, include_comments, column_time
 from nba_stats.read_write.db_insert import SqlDataframes
 from nba_stats.read_write.functions import export_txt, create_schema_str
@@ -407,10 +407,10 @@ def add_basic_gamestats(id_bref_soup, commit_changes=True):
     fourfactors_df = stats_db.apply_mappings(fourfactors_df, 'teams', ['team'])
 
     if commit_changes:
-        stats_db.add_to_db(boxscores_df, 'boxscores', 'game_id')
-        stats_db.add_to_db(adv_boxscores_df, 'adv_boxscores', 'game_id')
-        stats_db.add_to_db(linescores_df, 'linescores', 'game_id')
-        stats_db.add_to_db(fourfactors_df, 'fourfactors', 'game_id')
+        stats_db.add_to_db(boxscores_df, 'boxscores', 'game_id', 'game_id')
+        stats_db.add_to_db(adv_boxscores_df, 'adv_boxscores', 'game_id', 'game_id')
+        stats_db.add_to_db(linescores_df, 'linescores', 'game_id', 'game_id')
+        stats_db.add_to_db(fourfactors_df, 'fourfactors', 'game_id', 'game_id')
     
     logger_build.info('Average run time of soup extraction: %s' % ((end_time - start_time)/length))
 
@@ -475,6 +475,7 @@ def get_linescore(boxscore_soup, table_type='line_score'):
     
     Keyword arguments:
     boxscore_soup -- the soup object of the boxscore url
+    table_type -- get either the 'line_score' or 'four_factors' (default 'line_score')
     '''
     teams = pd.Series(get_away_home_teams(boxscore_soup))
     table = boxscore_soup.find('div',{'id':'all_' + table_type})
@@ -546,7 +547,8 @@ def get_playoff_games(season_range):
     assert season_range[0] <= season_range[1], 'first season must be before second season in range'
     
     playoffs_soup = get_bref_soup('/playoffs/series.html')
-    playoffs_table = get_bref_tables(playoffs_soup, ['div_playoffs_series'], 'series')['div_playoffs_series'].loc[:,['bref','series','season']].dropna()
+    playoffs_table = get_table(playoffs_soup, 'div_playoffs_series', 2).loc[:,['href','Series','Yr']].dropna()
+    playoffs_table = playoffs_table.rename(columns={'href':'bref', 'Series':'series', 'Yr':'season'})
     playoffs_table.loc[:,'season'] = playoffs_table.loc[:,'season'].astype(int)
     
     count = 0
@@ -563,12 +565,14 @@ def get_playoff_games(season_range):
                                 ])
     pbar.start()
     for idx, row in playoffs_table_restricted.iterrows():
-        series_soup = get_bref_soup(row[0])
+        series_soup = get_bref_soup(row['bref'])
         series_games = get_series_games(series_soup)
 
-        series_games.loc[:,'series_name'] = row[1]
+        if len(series_games) > 0:
+            series_games.loc[:,'series_name'] = row['series']
 
-        all_series.append(series_games)
+            all_series.append(series_games)
+        
         count+=1
         pbar.update(count)
     

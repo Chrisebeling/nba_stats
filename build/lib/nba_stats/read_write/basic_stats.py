@@ -114,7 +114,7 @@ class ReadDatabase(object):
         else:
             return self.summary[summary_name]
         
-    def basic_summary(self, player=None, categories=[], aggregator='AVG', groupby='season', team=False, convert_ids=True, summary_name=None, modern_only=True):
+    def basic_summary(self, player=None, categories=[], aggregator='AVG', groupby='season', team=False, convert_ids=True, summary_name=None, modern_only=True, playoffs='all'):
         '''Reads boxscore data and returns a summary dataframe grouped over desired category.
         Writes the df to the desired summary key so multiple summaries can be stored.
 
@@ -126,8 +126,9 @@ class ReadDatabase(object):
 		convert_ids - Boolean, set to True to convert ids to values (default True)
 		summary_name - The summary to write the df to, if none given will write to current summary (default None)
 		modern_only - Boolean, if true only returns seasons after 1983 (default True)
+        playoffs - 'all': all games are returned, 'playoffs': only playoff games returned, 'regular': only regular season games returned (default 'all')
         '''
-        extra_group, stat_str, player_str, extra_groupby = '', '', '', ''
+        extra_group, stat_str, where_clause, extra_groupby = '', '', '', ''
         
         if summary_name:
             self.set_summary(summary_name, reset_cats=True)
@@ -141,12 +142,19 @@ class ReadDatabase(object):
             player_ids = list(self.read_table(get_str='SELECT player_id FROM players WHERE last_name = "{}" AND first_name="{}"'.format(player[0], player[1])).loc[:,'player_id'])
             assert len(player_ids) == 1, 'Wrong number of player matches. Returned {} matches.'.format(len(player_ids))
 
-            player_str = 'WHERE b.player_id = {}'.format(player_ids[0])
+            where_clause = 'WHERE b.player_id = {}'.format(player_ids[0])
             if modern_only:
-                player_str += 'AND g.season > 1983'
+                where_clause += 'AND g.season > 1983'
         else:
-            player_str = 'WHERE g.season > 1983' if modern_only else ''
-            
+            where_clause = 'WHERE g.season > 1983' if modern_only else ''
+
+        # check where clause exists, then add playoffs filter to it
+        assert(where_clause != '', 'where clause not defined, must be defined at this point')
+        if playoffs == 'playoffs':
+            where_clause += ' AND b.game_id IN (SELECT game_id FROM playoffgames)'
+        elif playoffs == 'regular':
+            where_clause += ' AND b.game_id NOT IN (SELECT game_id FROM playoffgames)'
+        # if neither add nothing to clause, want to return all games     
 
 #         aggregator = 'SUM' if cum else 'AVG'
         boxscore_columns = list(self.read_table(get_str='SHOW COLUMNS FROM boxscores').loc[:,'Field'])
@@ -170,20 +178,22 @@ class ReadDatabase(object):
         if team:
             extra_groupby = 'b.team_id, ' + extra_groupby
             extra_group = 'b.team_id, ' + extra_group
-        
+
+
+
         if aggregator == '':
             full_str = '''SELECT {0}g.season, g.date_game, {1} 
                         FROM boxscores b 
                         LEFT JOIN games g ON b.game_id = g.game_id
                         {2}
-                        ORDER BY g.date_game ASC'''.format(extra_group, stat_str, player_str)
+                        ORDER BY g.date_game ASC'''.format(extra_group, stat_str, where_clause)
         else:
             full_str = '''SELECT {0}g.season, COUNT(b.pts) AS game_count, {1} 
                         FROM boxscores b 
                         LEFT JOIN games g ON b.game_id = g.game_id
                         {2}
                         GROUP BY {4}g.{3}
-                        ORDER BY g.{3} ASC'''.format(extra_group, stat_str, player_str, groupby, extra_groupby)
+                        ORDER BY g.{3} ASC'''.format(extra_group, stat_str, where_clause, groupby, extra_groupby)
         self.summary_cats[self.current_summary] += ['season']
 
         start_time = time.time()
