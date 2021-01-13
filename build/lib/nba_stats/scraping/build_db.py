@@ -10,7 +10,6 @@ import numpy as np
 import mysql.connector as sql
 import progressbar
 import logging
-from IPython.display import clear_output
 
 from nba_stats.scraping.base_functions import get_soup, get_bref_soup, get_bref_tables, get_table
 from nba_stats.scraping.functions import split_first_last, get_split, convert_feet, combine_columns, is_starter, to_int, convert_mp, include_comments, column_time
@@ -555,6 +554,9 @@ def get_playoff_games(season_range):
     all_series = []
     
     playoffs_table_restricted = playoffs_table[(playoffs_table.loc[:,'season'] >= season_range[0]) & (playoffs_table.loc[:,'season'] <= season_range[1])]
+
+    if playoffs_table_restricted.empty:
+        return None
     
     pbar = progressbar.ProgressBar(max_value=len(playoffs_table_restricted),
                                    widgets=[

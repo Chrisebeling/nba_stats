@@ -114,7 +114,8 @@ class ReadDatabase(object):
         else:
             return self.summary[summary_name]
         
-    def basic_summary(self, player=None, categories=[], aggregator='AVG', groupby='season', team=False, convert_ids=True, summary_name=None, modern_only=True, playoffs='all'):
+    def basic_summary(self, player=None, categories=[], aggregator='AVG', groupby='season', team=False, 
+        convert_ids=True, summary_name=None, modern_only=True, playoffs='all', player_fields=True):
         '''Reads boxscore data and returns a summary dataframe grouped over desired category.
         Writes the df to the desired summary key so multiple summaries can be stored.
 
@@ -151,9 +152,13 @@ class ReadDatabase(object):
         # check where clause exists, then add playoffs filter to it
         assert(where_clause != '', 'where clause not defined, must be defined at this point')
         if playoffs == 'playoffs':
-            where_clause += ' AND b.game_id IN (SELECT game_id FROM playoffgames)'
+            where_clause += ' AND p.series_id <> 23'
+            playoff_table = 'LEFT JOIN playoffgames p on b.game_id = p.game_id'
         elif playoffs == 'regular':
-            where_clause += ' AND b.game_id NOT IN (SELECT game_id FROM playoffgames)'
+            where_clause += ' AND p.series_id = 23'
+            playoff_table = 'LEFT JOIN playoffgames p on b.game_id = p.game_id'
+        else:
+            playoff_table = ''
         # if neither add nothing to clause, want to return all games     
 
 #         aggregator = 'SUM' if cum else 'AVG'
@@ -172,33 +177,50 @@ class ReadDatabase(object):
         
         if groupby == 'game_id':
             extra_group = 'g.home_pts, g.home_team_id, g.visitor_pts, g.visitor_team_id, g.date_game, '
-        elif player == None:
+        elif player == None and player_fields:
             extra_group = 'b.player_id, '
             extra_groupby = 'b.player_id, '
         if team:
             extra_groupby = 'b.team_id, ' + extra_groupby
             extra_group = 'b.team_id, ' + extra_group
-
-
+        no_groupby = (groupby == '' or groupby == None)
+        if no_groupby:
+            return_season = 'MIN(g.season) AS min_season, MAX(g.season) AS max_season, '  
+        else:
+            return_season = 'g.season, '
 
         if aggregator == '':
             full_str = '''SELECT {0}g.season, g.date_game, {1} 
                         FROM boxscores b 
                         LEFT JOIN games g ON b.game_id = g.game_id
                         {2}
-                        ORDER BY g.date_game ASC'''.format(extra_group, stat_str, where_clause)
+                        {3}
+                        ORDER BY g.date_game ASC'''.format(extra_group, stat_str, playoff_table, where_clause)
         else:
-            full_str = '''SELECT {0}g.season, COUNT(b.pts) AS game_count, {1} 
+            full_str = '''SELECT {0}{5} COUNT(b.pts) AS game_count, {1} 
                         FROM boxscores b 
                         LEFT JOIN games g ON b.game_id = g.game_id
                         {2}
-                        GROUP BY {4}g.{3}
-                        ORDER BY g.{3} ASC'''.format(extra_group, stat_str, where_clause, groupby, extra_groupby)
-        self.summary_cats[self.current_summary] += ['season']
+                        {3}
+                        GROUP BY {4}'''.format(extra_group, stat_str, playoff_table, where_clause, extra_groupby, return_season)
+            if not no_groupby:
+                full_str += '''g.{0}
+                        ORDER BY g.{0} ASC'''.format(groupby)
+
+        to_add = ['min_season','max_season'] if no_groupby else ['season']
+        self.summary_cats[self.current_summary] += to_add
 
         start_time = time.time()
         self.summary[self.current_summary] = self.read_table(get_str=full_str)
         print('{} SQL query takes {:.1f} seconds.'.format(self.current_summary, time.time() - start_time))
+
+        # add fg2 stats if fg and fg3 stats are in data
+        headers_set = set(self.summary[self.current_summary].columns)
+        if categories = [] and set(['fg','fga','fg3','fg3da']).issubset(headers_set):
+            self.summary[self.current_summary].loc[:,'fg2'] = self.summary[self.current_summary].loc[:,'fg'] - self.summary[self.current_summary].loc[:,'fg3']
+            self.summary[self.current_summary].loc[:,'fg2a'] = self.summary[self.current_summary].loc[:,'fga'] - self.summary[self.current_summary].loc[:,'fg3a']
+            self.summary[self.current_summary].loc[:,'fg2_pct'] = self.summary[self.current_summary].loc[:,'fg2'] / self.summary[self.current_summary].loc[:,'fg2a']
+
         
         if convert_ids:
             self.convert_ids('player', ['last_name','first_name','height','weight'])
