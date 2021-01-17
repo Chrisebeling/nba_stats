@@ -25,6 +25,9 @@ logger_insert = logging.getLogger(__name__)
 
 class SqlDataframes(object):
     def __init__(self, _password=PASSWORD, _user=USER, _db=DB, _host=HOST, _port=PORT,_unix=None):
+        self.establish_connection()
+    
+    def establish_connection(self, _password=PASSWORD, _user=USER, _db=DB, _host=HOST, _port=PORT,_unix=None):
         if _unix:
             self.conn = sql.connect(
                 unix_socket=_unix,
@@ -41,11 +44,20 @@ class SqlDataframes(object):
         else:
             Raise("unix socket or port/host must be provided.")
         self.conn.autocommit = True
+
+    def establish_cursor(self):
+        try:
+            cursor = self.conn.cursor()
+        except sql.errors.OperationalError:
+            self.establish_connection()
+            cursor = self.conn.cursor()
+
+        return cursor
         
     def check_schema(self, df, table_name):
         check = True
         select_str = "SELECT DISTINCT(COLUMN_NAME) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '%s'" % table_name
-        cursor = self.conn.cursor()
+        cursor = self.establish_cursor()
         cursor.execute(select_str)
         columns = [x[0] for x in cursor.fetchall()]
         for df_column in df.columns:
@@ -104,14 +116,14 @@ class SqlDataframes(object):
             logger_insert.info('Adding %s entries to table %s. %s' % (len(df_to_add), table_name, extra_info))
             sql_str = self.create_sql_str(df_to_add, table_name)
 
-            cursor = self.conn.cursor()
+            cursor = self.establish_cursor()
             cursor.execute(sql_str)
         else:
             logger_insert.info('No new entries. No alterations made.')
         
     def str_to_db(self, string, return_results=False):
         """Executes the given string on the connection."""
-        cursor = self.conn.cursor()
+        cursor = self.establish_cursor()
         cursor.execute(string)
         if return_results:
             return cursor.fetchall()
@@ -127,7 +139,7 @@ class SqlDataframes(object):
             distinct_str = ' DISTINCT ' if distinct_only else ''
             sql_string = "SELECT %s%s FROM %s;" % (distinct_str, columns_str, table_name)
 
-        cursor = self.conn.cursor()
+        cursor = self.establish_cursor()
 
         try:
             cursor.execute(sql_string)
@@ -144,7 +156,7 @@ class SqlDataframes(object):
         """Returns max or min value for given column"""
         max_min = "MAX" if max_value else "MIN"
         sql_string = "SELECT %s(%s) FROM %s;" % (max_min, column, table_name)
-        cursor = self.conn.cursor()
+        cursor = self.establish_cursor()
         cursor.execute(sql_string)
 
         return cursor.fetchall()[0][0] 
