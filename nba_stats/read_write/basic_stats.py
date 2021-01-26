@@ -23,8 +23,20 @@ def isfloat(number):
     except (ValueError, TypeError):
         return False
 
+def add_where(original, add):
+    if original == '':
+        return 'WHERE ' + add
+    else:
+        return original + ' AND ' + add
+
 class ReadDatabase(object):
     def __init__(self, _password=PASSWORD, _user=USER, _db=DB, _host=HOST, _port=PORT,_unix=None):
+        self.establish_connection()
+        self.summary = {} 
+        self.summary_cats = {}
+        self.current_summary = 'default'
+    
+    def establish_connection(self, _password=PASSWORD, _user=USER, _db=DB, _host=HOST, _port=PORT,_unix=None):
         if _unix:
             self.conn = sql.connect(
                 unix_socket=_unix,
@@ -38,9 +50,18 @@ class ReadDatabase(object):
                 user=_user,
                 password=_password,
                 database=_db)
-        self.summary = {}
-        self.summary_cats = {}
-        self.current_summary = 'default'
+        else:
+            Raise("unix socket or port/host must be provided.")
+        self.conn.autocommit = True
+
+    def establish_cursor(self):
+        try:
+            cursor = self.conn.cursor()
+        except sql.errors.OperationalError:
+            self.establish_connection()
+            cursor = self.conn.cursor()
+
+        return cursor
         
     def read_table(self, table_name=None, columns=None, get_str=None, write=False):
         '''Returns the given table, all columns if none given.
@@ -61,7 +82,7 @@ class ReadDatabase(object):
             columns_str = "*" if columns == None else ', '.join(columns) 
             sql_string = "SELECT %s FROM %s;" % (columns_str, table_name)
 
-        cursor = self.conn.cursor()
+        cursor = self.establish_cursor()
         try:
             cursor.execute(sql_string)
         except sql.errors.ProgrammingError:
@@ -78,7 +99,11 @@ class ReadDatabase(object):
             df = pd.DataFrame(table_lines, columns = table_columns)
 
             float_columns = [header for header, item in zip(table_columns, table_lines[0]) if isfloat(item)]
-            df[float_columns] = df[float_columns].apply(pd.to_numeric)
+            
+            try:
+                df[float_columns] = df[float_columns].apply(pd.to_numeric)
+            except Exception as e:
+                print('Could not convert float columns to numeric: {}'.format(e))
 
             return df
     
@@ -115,7 +140,7 @@ class ReadDatabase(object):
             return self.summary[summary_name]
         
     def basic_summary(self, player=None, categories=[], aggregator='AVG', groupby='season', team=False, 
-        convert_ids=True, summary_name=None, modern_only=True, playoffs='all', player_fields=True):
+        convert_ids=True, summary_name=None, modern_only=True, playoffs='all', player_fields=True, years=None):
         '''Reads boxscore data and returns a summary dataframe grouped over desired category.
         Writes the df to the desired summary key so multiple summaries can be stored.
 
@@ -143,19 +168,25 @@ class ReadDatabase(object):
             player_ids = list(self.read_table(get_str='SELECT player_id FROM players WHERE last_name = "{}" AND first_name="{}"'.format(player[0], player[1])).loc[:,'player_id'])
             assert len(player_ids) == 1, 'Wrong number of player matches. Returned {} matches.'.format(len(player_ids))
 
-            where_clause = 'WHERE b.player_id = {}'.format(player_ids[0])
-            if modern_only:
-                where_clause += 'AND g.season > 1983'
-        else:
-            where_clause = 'WHERE g.season > 1983' if modern_only else ''
+            where_clause = add_where(where_clause, 'b.player_id = {}'.format(player_ids[0]))
+        
+        if years:
+            if type(years) == tuple or type(years) == list:
+                assert len(years) == 2, '2 years must be provided in tuple or list form'
+                where_clause = add_where(where_clause, 'g.season >= {0} AND g.season <= {1}'.format(years[0], years[1]))
+
+            else:
+                where_clause = add_where(where_clause, 'g.season = {0}'.format(years))
+        elif modern_only:
+            where_clause = add_where(where_clause, 'g.season > 1983')
 
         # check where clause exists, then add playoffs filter to it
-        assert(where_clause != '', 'where clause not defined, must be defined at this point')
+        # assert(where_clause != '', 'where clause not defined, must be defined at this point')
         if playoffs == 'playoffs':
-            where_clause += ' AND p.series_id <> 23'
+            where_clause = add_where(where_clause, 'p.series_id <> 23')
             playoff_table = 'LEFT JOIN playoffgames p on b.game_id = p.game_id'
         elif playoffs == 'regular':
-            where_clause += ' AND p.series_id = 23'
+            where_clause = add_where(where_clause, 'p.series_id = 23')
             playoff_table = 'LEFT JOIN playoffgames p on b.game_id = p.game_id'
         else:
             playoff_table = ''
@@ -210,13 +241,14 @@ class ReadDatabase(object):
         to_add = ['min_season','max_season'] if no_groupby else ['season']
         self.summary_cats[self.current_summary] += to_add
 
+        print(full_str)
         start_time = time.time()
         self.summary[self.current_summary] = self.read_table(get_str=full_str)
         print('{} SQL query takes {:.1f} seconds.'.format(self.current_summary, time.time() - start_time))
 
         # add fg2 stats if fg and fg3 stats are in data
         headers_set = set(self.summary[self.current_summary].columns)
-        if categories = [] and set(['fg','fga','fg3','fg3da']).issubset(headers_set):
+        if categories == [] and set(['fg','fga','fg3','fg3da']).issubset(headers_set):
             self.summary[self.current_summary].loc[:,'fg2'] = self.summary[self.current_summary].loc[:,'fg'] - self.summary[self.current_summary].loc[:,'fg3']
             self.summary[self.current_summary].loc[:,'fg2a'] = self.summary[self.current_summary].loc[:,'fga'] - self.summary[self.current_summary].loc[:,'fg3a']
             self.summary[self.current_summary].loc[:,'fg2_pct'] = self.summary[self.current_summary].loc[:,'fg2'] / self.summary[self.current_summary].loc[:,'fg2a']
@@ -376,3 +408,59 @@ class ReadDatabase(object):
         df = df.drop(labels=remove_cols, axis=1)
         self.summary_cats[self.current_summary] = [x for x in self.summary_cats[self.current_summary] if x not in remove_cols]
         self.summary[self.current_summary] = df
+
+    def season_games(self, season):
+        '''Reads the game data for the given season: each game's date, scores etc. Df is then stored in summary named "games".
+
+        Keyword arguments:
+        season - The season to read games for, must be an integer less than or equal to current year.
+        '''
+        self.set_summary('games')
+
+        sql_str = '''SELECT date_game, t1.abbreviation AS home_team, t2.abbreviation AS visitor_team, home_pts > visitor_pts AS home_victory FROM games g
+                    LEFT JOIN playoffgames p on g.game_id = p.game_id
+                    LEFT JOIN teams t1 on g.home_team_id = t1.team_id
+                    LEFT JOIN teams t2 on g.visitor_team_id = t2.team_id
+                    WHERE g.season = {} and p.series_id = 23'''.format(season)
+
+        season_games = self.read_table(get_str=sql_str) 
+        season_games.loc[:,'visitor_victory'] = 1 - season_games.loc[:,'home_victory']
+
+        self.summary[self.current_summary] = season_games
+
+    def standings(self, max_date=None, rank_method='min'):
+        '''Calculates the standings at the date provided. 
+        The games summary for the given season must be already stored. Run season_games if it is not.
+        Provides league standings and ties are all given the same ranking by default.
+
+        Keyword arguments:
+        max_date - The date to take the standings on. If not provided, will give current standings (default None)
+        rank_method - The method used to sort the standings (default 'min')
+        '''
+        assert 'games' in self.summary.keys(), '"games" summary not loaded, please run season_games function.'
+        games_restricted = self.summary['games'].copy()
+
+        if max_date != None:
+            season_start = games_restricted['date_game'].min()
+            assert max_date >= season_start, 'Date provided is before the beginning of the season. Please provide date after: {}'.format(season_start)
+            
+            games_restricted = games_restricted[games_restricted['date_game'] <= max_date]
+
+        home_visitor = ['home', 'visitor']
+        standings_list = []
+        for i in range(2):
+            standings_temp = games_restricted.groupby(home_visitor[i] + '_team').agg(
+                {home_visitor[i]+'_victory':sum,
+                home_visitor[-1-i]+'_victory':sum}).rename(columns={home_visitor[i]+'_victory':'W_'+home_visitor[i],
+                                                                    home_visitor[-1-i]+'_victory':'L_'+home_visitor[i]})
+            standings_temp.index.name = None
+            standings_list.append(standings_temp)
+
+        standings = pd.concat(standings_list, axis=1)
+        for W_L in ['W', 'L']:
+            standings.loc[:,W_L] = standings[W_L+'_home']+ standings[W_L+'_visitor']
+        standings.loc[:,'Played'] = standings['W'] + standings['L']
+        standings.loc[:,'W_pct'] = standings['W'] / standings['Played']
+        standings.loc[:,'position'] = standings['W_pct'].rank(ascending=False, method=rank_method).astype(int)
+
+        return standings.sort_values('position')
