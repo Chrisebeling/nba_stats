@@ -183,10 +183,10 @@ class ReadDatabase(object):
         # check where clause exists, then add playoffs filter to it
         # assert(where_clause != '', 'where clause not defined, must be defined at this point')
         if playoffs == 'playoffs':
-            where_clause = add_where(where_clause, 'p.series_id <> 23')
+            where_clause = add_where(where_clause, 'p.series_id <> 23 and p.series_id IS NOT NULL')
             playoff_table = 'LEFT JOIN playoffgames p on b.game_id = p.game_id'
         elif playoffs == 'regular':
-            where_clause = add_where(where_clause, 'p.series_id = 23')
+            where_clause = add_where(where_clause, '(p.series_id = 23 or p.series_id IS NULL)')
             playoff_table = 'LEFT JOIN playoffgames p on b.game_id = p.game_id'
         else:
             playoff_table = ''
@@ -421,7 +421,7 @@ class ReadDatabase(object):
                     LEFT JOIN playoffgames p on g.game_id = p.game_id
                     LEFT JOIN teams t1 on g.home_team_id = t1.team_id
                     LEFT JOIN teams t2 on g.visitor_team_id = t2.team_id
-                    WHERE g.season = {} and p.series_id = 23'''.format(season)
+                    WHERE g.season = {} and (p.series_id = 23 or p.series_id IS NULL)'''.format(season)
 
         season_games = self.read_table(get_str=sql_str) 
         season_games.loc[:,'visitor_victory'] = 1 - season_games.loc[:,'home_victory']
@@ -431,7 +431,7 @@ class ReadDatabase(object):
     def standings(self, max_date=None, rank_method='min'):
         '''Calculates the standings at the date provided. 
         The games summary for the given season must be already stored. Run season_games if it is not.
-        Provides league standings and ties are all given the same ranking by default.
+        Returns the games included in the stanndings and the league standings. Ties are all given the same ranking by default.
 
         Keyword arguments:
         max_date - The date to take the standings on. If not provided, will give current standings (default None)
@@ -463,4 +463,4 @@ class ReadDatabase(object):
         standings.loc[:,'W_pct'] = standings['W'] / standings['Played']
         standings.loc[:,'position'] = standings['W_pct'].rank(ascending=False, method=rank_method).astype(int)
 
-        return standings.sort_values('position')
+        return games_restricted, standings.sort_values('position')
