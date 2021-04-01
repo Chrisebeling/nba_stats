@@ -140,28 +140,30 @@ class ReadDatabase(object):
         else:
             return self.summary[summary_name]
 
-    def basic_summary(self, player=None, categories=[], aggregator='AVG', groupby='season', team=False,
-        convert_ids=True, summary_name=None, modern_only=True, playoffs='all', player_fields=True, years=None,
-        min_date=None, max_date=None, suppress_query=True):
+    def basic_summary(self, player=None, categories=[], adv_categories=[], aggregator='AVG', groupby='season', team=False,
+        convert_ids=True, summary_name=None, modern_only=True, playoffs='all', adv_stats=False, player_fields=True,
+        years=None, min_date=None, max_date=None, suppress_query=True):
         '''Reads boxscore data and returns a summary dataframe grouped over desired category.
         Writes the df to the desired summary key so multiple summaries can be stored.
 
         player - The player to return stats for, must be a tuple/list in the form of LastName, FirstName (default None)
 		categories - THe fields to read from the boxscore table (default [])
-		aggregator - The aggregator to summarise boxscore stats (default 'AVG')
+        categories - THe fields to read from the adv_boxscore table (default [])
+        aggregator - The aggregator to summarise boxscore stats (default 'AVG')
 		groupby - The field to groupby stats over (default 'season')
 		team - Boolean, set to true if team field required per line (default False)
 		convert_ids - Boolean, set to True to convert ids to values (default True)
 		summary_name - The summary to write the df to, if none given will write to current summary (default None)
 		modern_only - Boolean, if true only returns seasons after 1983 (default True)
         playoffs - 'all': all games are returned, 'playoffs': only playoff games returned, 'regular': only regular season games returned (default 'all')
+        adv_stats - Boolean, if true will also return adv boxscore stats (default False)
         years - Only return seasons within the years provided. If tuple or list of len 2 provided,
         will take these as inclusive bounds. If int provided, will only return seasons of the exact value provided. (default None)
         min_date - Only return games on or after this date (default None)
         max_date - Only return games on or before this date (default None)
         suppress_query - If True, will print the query submitted to SQL. (default True)
         '''
-        extra_group, stat_str, where_clause, extra_groupby = '', '', '', ''
+        extra_group, stat_str, adv_str, adv_table, where_clause, extra_groupby = '', '', '', '', '', ''
 
         if summary_name:
             self.set_summary(summary_name, reset_cats=True)
@@ -205,10 +207,17 @@ class ReadDatabase(object):
             playoff_table = ''
         # if neither add nothing to clause, want to return all games
 
-#         aggregator = 'SUM' if cum else 'AVG'
         boxscore_columns = list(self.read_table(get_str='SHOW COLUMNS FROM boxscores').loc[:,'Field'])
         des_categories = [x for x in boxscore_columns if '_id' not in x] if categories==[] else categories
         stat_str = ', '. join(['{}(b.{}) AS {}'.format(aggregator, cat, cat) for cat in des_categories])
+
+        if adv_stats:
+            adv_columns = list(self.read_table(get_str='SHOW COLUMNS FROM adv_boxscores').loc[:,'Field'])
+            des_adv = [x for x in adv_columns if '_id' not in x] if adv_categories==[] else adv_categories
+            adv_agg = aggregator if aggregator == '' else 'AVG'
+            adv_str = ','+', '. join(['{0}(a.{1}) AS {1}'.format(adv_agg, cat) for cat in des_adv])
+
+            adv_table = 'LEFT JOIN adv_boxscores a ON b.game_id = a.game_id and b.player_id = a.player_id'
 
         for shot_type in ['fg','fg3','ft']:
             if shot_type in des_categories and shot_type + 'a' in des_categories:
@@ -234,19 +243,23 @@ class ReadDatabase(object):
             return_season = 'g.season, '
 
         if aggregator == '':
-            full_str = '''SELECT {0}g.season, g.date_game, {1}
+            full_str = '''SELECT {0}g.season, g.date_game, {1}{4}
                         FROM boxscores b
+                        {5}
                         LEFT JOIN games g ON b.game_id = g.game_id
                         {2}
                         {3}
-                        ORDER BY g.date_game ASC'''.format(extra_group, stat_str, playoff_table, where_clause)
+                        ORDER BY g.date_game ASC'''.format(extra_group, stat_str, playoff_table, where_clause,
+                                                            adv_str, adv_table)
         else:
-            full_str = '''SELECT {0}{5} COUNT(b.pts) AS game_count, {1}
+            full_str = '''SELECT {0}{5} COUNT(b.pts) AS game_count, {1}{6}
                         FROM boxscores b
+                        {7}
                         LEFT JOIN games g ON b.game_id = g.game_id
                         {2}
                         {3}
-                        GROUP BY {4}'''.format(extra_group, stat_str, playoff_table, where_clause, extra_groupby, return_season)
+                        GROUP BY {4}'''.format(extra_group, stat_str, playoff_table, where_clause,
+                                                extra_groupby, return_season, adv_str, adv_table)
             if not no_groupby:
                 full_str += '''g.{0}
                         ORDER BY g.{0} ASC'''.format(groupby)
