@@ -1,7 +1,7 @@
 from setuptools import find_packages, setup
 
-with open('requirements.txt') as f: 
-    requirements = f.readlines() 
+with open('requirements.txt') as f:
+    requirements = f.readlines()
 
 with open('README.md') as f:
     readme = f.read()
@@ -10,7 +10,7 @@ with open('LICENSE') as f:
     license = f.read()
 
 setup(name='nba_stats',
-      version='0.1.35',
+      version='0.1.37',
       description='Contains functions used to create, manage and use a database of nba statistics.',
       long_description=readme,
       author='Chris Ebeling',

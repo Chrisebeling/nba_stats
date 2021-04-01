@@ -54,7 +54,7 @@ def get_players_urls(players_url=None):
     if players_url == None:
         players_url = BREF_HTML + '/players/'
     letters = [chr(n) for n in range(97,123)]
-    
+
     success_count, http_error_count = 0, 0
     start_time = time.time()
     for letter in letters:
@@ -65,9 +65,9 @@ def get_players_urls(players_url=None):
         else:
             http_error_count += 1
     end_time = time.time()
-    
+
     logger_build.info('Per run: {}, Successes: {}, Failures: {}'.format(
-                                                                                        (end_time - start_time)/(success_count+http_error_count), 
+                                                                                        (end_time - start_time)/(success_count+http_error_count),
                                                                                         success_count,
                                                                                         http_error_count)
                                                                         )
@@ -83,7 +83,7 @@ def get_all_players(players_soups):
     for p_soup in players_soups:
         players_df = get_bref_tables(p_soup, ['all_players'])
         players_dfs.append(players_df['all_players'])
-    
+
     players = pd.concat(players_dfs)
     for i in [1,2]:
         players.loc[:,'pos' + str(i)] = players.pos.apply(lambda x: get_split(x, '-', i-1))
@@ -95,10 +95,10 @@ def get_all_players(players_soups):
     for column, idx in zip(['first_name','last_name'],[0,1]):
         players.loc[:,column] = players.apply(lambda x: split_first_last(x['player'],x['bref'])[idx], axis=1)
     players.height = players.height.apply(lambda x: convert_feet(x))
-        
+
     drop_columns = ['colleges', 'player', 'pos']
     players = players.drop(drop_columns, axis=1).reset_index(drop=True)
-    
+
     return players
 
 def get_colleges(players_table):
@@ -120,20 +120,20 @@ def get_teams(url=None, headings=None):
     if url == None:
         url = BREF_HTML + '/teams/'
     team_soup = get_soup(url, headings)
-    
+
     tables= get_bref_tables(team_soup,['all_teams_active','all_teams_defunct'],'franch_name')
-    
+
     for key in tables.keys():
         tables[key].loc[:,'team'] = tables[key].apply(lambda row: combine_columns(row['franch_name'], row['team_name']), axis=1)
     teams = pd.concat(tables).reset_index(drop=True)
     teams = teams.drop_duplicates('team').reset_index(drop=True)
     teams.loc[:,'abbreviation'] = teams.bref.apply(lambda x: re.findall('(?<=/teams/)[A-Z]{3}',x)[0] if type(x) == str else x)
-    
+
     return teams[['abbreviation', 'team']]
 
 def get_boxscore_htmls_month(year, month, headers=None, url_template=None):
     '''Returns a df containing info for all games in the given month.
-    
+
     Keyword arguments:
     year -- the year the season ends in
     month -- the month as an integer
@@ -143,12 +143,12 @@ def get_boxscore_htmls_month(year, month, headers=None, url_template=None):
     assert type(year) == int and type(month) == int, 'Year and month must be int'
     assert year <= CURRENT_YEAR + 1, 'Year must be before %s' % (CURRENT_YEAR + 1)
     assert month >= 1 and month <= 12, 'Month must be between 1 and 12'
-    
+
     if url_template == None:
         url_template = "https://www.basketball-reference.com/leagues/NBA_%year%_games-%month%.html"
     month_url = url_template.replace('%year%',str(year)).replace('%month%', calendar.month_name[month].lower())
     soup = get_soup(month_url, headers)
-    
+
     if soup:
         try:
             boxscores_month = get_bref_tables(soup,['all_schedule'],'box_score_text')['all_schedule']
@@ -167,7 +167,7 @@ def get_boxscore_htmls_month(year, month, headers=None, url_template=None):
 
         # keep only games that have been played
         boxscores_month = boxscores_month[boxscores_month.loc[:,'home_pts'] != '']
-        
+
         for home_visitor in ['home','visitor']:
             boxscores_month[home_visitor+'_pts'] = boxscores_month[home_visitor+'_pts'].astype(int)
 
@@ -175,8 +175,8 @@ def get_boxscore_htmls_month(year, month, headers=None, url_template=None):
 
 def get_boxscore_htmls_year(year, regular_length=True, crawl_sleep=True, season_teams=SEASON_TEAMS, playoff_teams=PLAYOFF_TEAMS):
     '''Returns the html links for games of a given season.
-    Season year is year season finishes. 
-    
+    Season year is year season finishes.
+
     Keyword arguments:
     year -- The year the desired season finishes. i.e. 2017/18, year=2018
     regular_length -- If False, will not apply assertions on game numbers (default True)
@@ -190,27 +190,27 @@ def get_boxscore_htmls_year(year, regular_length=True, crawl_sleep=True, season_
             month_games = get_boxscore_htmls_month(year, month)
         except:
             logger_build.info('Error on Season: {}, Month {}'.format(year, month))
-        
+
         if isinstance(month_games, pd.DataFrame) and len(month_games) > 0:
             first_game_date = dt.datetime.strptime(re.findall('[0-9]{8}', month_games['bref'][0])[0],"%Y%m%d")
             assert first_game_date.month == month, 'Month error. First game: %s, Expected: %s' % (first_game_date.month, month)
             # for games in year before 'season year' actual year of game will be year before
             expected_year = year - 1 if month >= 10 else year
             assert first_game_date.year == expected_year, 'Year error. First game %s, Expected: %s' % (first_game_date.year, expected_year)
-        
+
             season_boxscore_htmls.append(month_games)
     season_table_df = pd.concat(season_boxscore_htmls, sort=False).reset_index(drop=True)
     season_table_df.loc[:, 'season'] = year
-    
-    if regular_length:  
+
+    if regular_length:
         no_playoff_teams = [y for x,y in playoff_teams.items() if x <= year][-1]
 
         actual_playoff_teams = sum(season_table_df.groupby('home_team').count().date_game > 41)
         assert actual_playoff_teams == no_playoff_teams, 'Nooooo. %s teams made playoffs. Should be 16. Year: %s' % (actual_playoff_teams, year)
         # min = 4 game playoff series, max = 7 game playoff series. Ideally want to compare against another source for exact number
-        
+
         no_teams = [y for x,y in season_teams.items() if x <= year][-1]
-           
+
         regular_games = no_teams * 82 / 2
         min_games = regular_games + 15 * 4
         max_games = regular_games + 15 * 7
@@ -223,7 +223,7 @@ def get_boxscore_htmls_year(year, regular_length=True, crawl_sleep=True, season_
 def get_season_gameno(games_df, regular_length=True):
     """Adds game numbers for each team.
     The relevant game number is which game the current game is in that team's season.
-    
+
     Keyword arguments:
     season_boxscore_html -- the df of a seasons games
     """
@@ -244,7 +244,7 @@ def get_season_gameno(games_df, regular_length=True):
 
     season_games_df.loc[:,'home_gameno'] = home_team_gameno
     season_games_df.loc[:,'visitor_gameno'] = visitor_team_gameno
-    
+
     if regular_length:
         no_fullseasons = sum(season_games_df.home_gameno == 82)+sum(season_games_df.visitor_gameno == 82)
         no_playoffs = sum(season_games_df.home_gameno == 83)+sum(season_games_df.visitor_gameno == 83)
@@ -256,7 +256,7 @@ def get_season_gameno(games_df, regular_length=True):
 def get_game_soups(games_table, check_tables=['boxscores', 'fourfactors'], limit=500, crawl_sleep=True, max_errors=3):
     """Returns a list containing the game id, bref and soup of all games in games table not already in check tables.
     Will only add game to the list if it has not been already added to each check table.
-    
+
     Keyword arguments:
     games_table -- the df of games, includes game id and bref
     check_tables -- the tables to check if the game has already been added (default ['boxscores', 'linescores'])
@@ -274,7 +274,7 @@ def get_game_soups(games_table, check_tables=['boxscores', 'fourfactors'], limit
             current_ids = game_ids
         else:
             current_ids = [game_id for game_id in current_ids if game_id in game_ids]
-    
+
     new_games = games_table[~games_table.game_id.isin(current_ids)]
     # read most recent games first
     new_games = new_games.sort_values('game_id', ascending=False)
@@ -287,7 +287,7 @@ def get_game_soups(games_table, check_tables=['boxscores', 'fourfactors'], limit
     count = 0
 
     logger_build.info('Finished prep: {:.1f} seconds since start'.format(time.time()-start_time))
-    
+
     start_time = time.time()
     pbar = progressbar.ProgressBar(max_value=limit,
                                    widgets=[
@@ -319,19 +319,19 @@ def get_game_soups(games_table, check_tables=['boxscores', 'fourfactors'], limit
             pbar.update(count)
     pbar.finish()
     end_time = time.time()
-    
+
     logger_build.info('Average run time excluding sleep: %s' % ((end_time - start_time-count*CRAWL_DELAY)/count))
-    
+
     return id_bref_soup
 
 def add_basic_gamestats(id_bref_soup, commit_changes=True):
     """Adds boxscores and linecores to db, taking list of game_ids, brefs and boxscore soups as input.
     Applies mappings to convert players, teams, etc to relevant id
-    
+
     Keyword arguments:
     id_bref_soup -- A list of tuples, contains game id, bref, boxscore soup"""
     boxscores, adv_boxscores, linescores, fourfactors = [], [], [], []
-    
+
     length = len(id_bref_soup)
     pbar = progressbar.ProgressBar(max_value=length,
                                    widgets=[
@@ -343,7 +343,7 @@ def add_basic_gamestats(id_bref_soup, commit_changes=True):
     pbar.start()
     start_time = time.time()
     count=0
-    
+
     for game_id, bref, soup in id_bref_soup:
 
         if soup == None:
@@ -356,7 +356,7 @@ def add_basic_gamestats(id_bref_soup, commit_changes=True):
         except Exception as e:
             logger_build.error('{}, {}'.format(game_id, bref))
             raise
-        
+
         for df in [boxscore, adv_boxscore]:
             if df.empty:
                 year_regex = re.findall("(?<=boxscores.)[0-9]{4}", bref)
@@ -369,7 +369,7 @@ def add_basic_gamestats(id_bref_soup, commit_changes=True):
             # else:
             #     df.loc[:,'game_id'] = game_id
         if linescore.empty or fourfactor.empty:
-            logger_build.error("Missing a linescore. Linescore empty: %s, FourFactors empty: %s. game_id: %s, bref: %s" % 
+            logger_build.error("Missing a linescore. Linescore empty: %s, FourFactors empty: %s. game_id: %s, bref: %s" %
                 (linescore.empty, fourfactor.empty, game_id, bref))
             # df.loc[0,'game_id'] = game_id
         # else:
@@ -379,22 +379,22 @@ def add_basic_gamestats(id_bref_soup, commit_changes=True):
                 df.loc[:,'game_id'] = game_id
             else:
                 df.loc[0,'game_id'] = game_id
-        
+
         boxscores.append(boxscore)
         adv_boxscores.append(adv_boxscore)
         linescores.append(linescore)
         fourfactors.append(fourfactor)
-        
+
         count+=1
         pbar.update(count)
-        
+
     end_time = time.time()
 
     boxscores_df = pd.concat(boxscores, sort=False).reset_index(drop=True)
     adv_boxscores_df = pd.concat(adv_boxscores, sort=False).reset_index(drop=True)
     linescores_df = pd.concat(linescores, sort=False).reset_index(drop=True)
     fourfactors_df = pd.concat(fourfactors, sort=False).reset_index(drop=True)
-    
+
     pbar.finish()
 
     boxscores_df = stats_db.apply_mappings(boxscores_df, 'starters', ['starter'])
@@ -410,14 +410,14 @@ def add_basic_gamestats(id_bref_soup, commit_changes=True):
         stats_db.add_to_db(adv_boxscores_df, 'adv_boxscores', 'game_id', 'game_id')
         stats_db.add_to_db(linescores_df, 'linescores', 'game_id', 'game_id')
         stats_db.add_to_db(fourfactors_df, 'fourfactors', 'game_id', 'game_id')
-    
+
     logger_build.info('Average run time of soup extraction: %s' % ((end_time - start_time)/length))
 
 def get_boxscore(boxscore_soup, advanced=False):
     '''Returns a df containing boxscore data for both teams, given the soup of the boxscore url.
     pct fields are removed as these can be inferred from data.
     Advanced box score option is in development stage. Will return df but formatting not refined.
-    
+
     Keyword arguments:
     boxscore_soup -- A soup object of the boxscore url
     advanced -- If True, returns the advanced box score (Default False)
@@ -427,10 +427,10 @@ def get_boxscore(boxscore_soup, advanced=False):
     re_match = 'all_box-[A-Z]{3}-game-advanced' if advanced else 'all_box-[A-Z]{3}-game-basic'
     re_compile = re.compile(re_match)
     find_team_regex = '(?<=all_box_)[a-z]{3}(?=_advanced)' if advanced else '(?<=all_box_)[a-z]{3}(?=_basic)'
-    
+
     tables = get_bref_tables(boxscore_soup, [re_compile])
     teams = get_away_home_teams(boxscore_soup)
-    
+
     for key in tables.keys():
         if 'reason' in tables[key].keys():
             tables[key].loc[:,'starter'] = tables[key].apply(lambda row: is_starter(row.name, row.reason), axis=1)
@@ -440,38 +440,38 @@ def get_boxscore(boxscore_soup, advanced=False):
     #     tables[key].loc[:,'team'] = team_abb
         tables[key].loc[:,'team'] = teams[0]
         teams.pop(0)
-    
+
     try:
         boxscore = pd.concat([tables[key] for key in tables.keys()], sort=False).reset_index(drop=True)
     except ValueError as e:
         return pd.DataFrame()
     except:
         raise
-    boxscore = boxscore[boxscore.player != 'Reserves'] 
-    
+    boxscore = boxscore[boxscore.player != 'Reserves']
+
     if advanced:
         column_drops = ['reason', 'player', 'efg_pct', 'ts_pct', 'fg3a_per_fga_pct', 'fta_per_fga_pct', 'starter', 'team', 'mp','bpm'] #bpm newly added, should add at some point
     else:
         column_drops = ['reason', 'player'] + [header for header in boxscore.keys() if 'pct' in header]
         boxscore['mp'] = boxscore['mp'].apply(lambda x: convert_mp(x))
-        
+
     column_drops = [x for x in column_drops if x in boxscore.keys()]
     non_number = ['mp', 'player', 'starter', 'team']
     boxscore.drop(column_drops, axis=1, inplace=True)
     boxscore.rename(columns={'bref':'player'}, inplace=True)
     for column in boxscore.columns:
-        if column not in non_number: 
+        if column not in non_number:
             boxscore[column] = boxscore[column].apply(lambda x: to_int(x, 'pct' in column))
-            
+
     # end_time = time.time()
     # export_txt(str(end_time - start_time) + '\n', 'boxscore_times_%label%.csv'.replace('%label%', test_csv_name))
-    
+
     return boxscore
 
 def get_linescore(boxscore_soup, table_type='line_score'):
     '''Returns a df of the basic linescore from the boxscore soup.
     Will contain any number of OTs and the total score.
-    
+
     Keyword arguments:
     boxscore_soup -- the soup object of the boxscore url
     table_type -- get either the 'line_score' or 'four_factors' (default 'line_score')
@@ -484,17 +484,17 @@ def get_linescore(boxscore_soup, table_type='line_score'):
     header_row = full_table.find('thead').find_all('tr', class_=lambda x: x != 'over_header')[0]
     rows = full_table.find('tbody').find_all('tr')
     table_rows = []
-    
+
     if table_type == 'line_score':
         possible_headers = [str(x) for x in [1,2,3,4,'T']]
     else:
         possible_headers = [str(x) for x in ['Pace', 'eFG%', 'TOV%', 'ORB%', 'FT/FGA', 'ORtg']]
-        
+
     raw_header = [x.text for x in header_row.find_all()]
     header = ['team'] + [x for x in raw_header if x in possible_headers or 'OT' in x]
     for row in rows:
         table_rows.append([x.text for x in row.find_all(['td','th'])])
-    
+
     if table_type == 'line_score':
         header = ['Q' + column if re.match("^[1-4]$", column) else column for column in header]
     else:
@@ -530,34 +530,34 @@ def get_series_games(soup):
             bref = td.find('a')['href']
 
         series_games[game_no] = bref
-        
+
     return pd.DataFrame({'bref':series_games}).reset_index().rename(columns={'index':'game_no'})
 
 def get_playoff_games(season_range):
     '''Returns a df containing details of all playoff games in the desired seasons.
     Converts bref and series name to the relevant ids.
     Columns returned: game_no, game_id, series_id.
-    
+
     Keyword Arguments:
     season_range -- A tuple, only seasons in this range will be returned.
     '''
     assert type(season_range) == tuple, 'season_range must be a tuple'
     assert len(season_range) == 2, 'season_range must contain 2 elements'
     assert season_range[0] <= season_range[1], 'first season must be before second season in range'
-    
+
     playoffs_soup = get_bref_soup('/playoffs/series.html')
     playoffs_table = get_table(playoffs_soup, 'div_playoffs_series', 2).loc[:,['href','Series','Yr']].dropna()
     playoffs_table = playoffs_table.rename(columns={'href':'bref', 'Series':'series', 'Yr':'season'})
     playoffs_table.loc[:,'season'] = playoffs_table.loc[:,'season'].astype(int)
-    
+
     count = 0
     all_series = []
-    
+
     playoffs_table_restricted = playoffs_table[(playoffs_table.loc[:,'season'] >= season_range[0]) & (playoffs_table.loc[:,'season'] <= season_range[1])]
 
     if playoffs_table_restricted.empty:
         return None
-    
+
     pbar = progressbar.ProgressBar(max_value=len(playoffs_table_restricted),
                                    widgets=[
                                     ' [', progressbar.Timer(), '] ',
@@ -574,12 +574,12 @@ def get_playoff_games(season_range):
             series_games.loc[:,'series_name'] = row['series']
 
             all_series.append(series_games)
-        
+
         count+=1
         pbar.update(count)
-    
+
     pbar.finish()
-    
+
     series_df = pd.concat(all_series)
 
     series_ids = stats_db.apply_mappings(series_df, 'games', ['bref'], 'bref').rename(columns={'bref_id':'game_id'})
@@ -589,7 +589,7 @@ def get_playoff_games(season_range):
     table_ids = list((stats_db.read_table('games',['game_id'], distinct_only=True).game_id))
     to_add = [game_id for game_id in scraped_ids if game_id in table_ids]
     series_ids = series_ids[series_ids.loc[:,'game_id'].isin(to_add)]
-    
+
     return series_ids
 
 def get_away_home_teams(soup):
@@ -597,5 +597,65 @@ def get_away_home_teams(soup):
     for item in soup.find_all('div',{'class':'scorebox'}):
         for link in item.find_all('a',{'itemprop':'name'}):
             teams.append(link.text)
-    
-    return teams                
+
+    return teams
+
+def get_allnbateams(team_type):
+    '''Returns a df containing the all nba players for each season for the given team.
+
+    Keyword Arguments:
+    team_type - The all nba team to get. Must be one of league, defense, rookie.
+    '''
+    assert team_type in ['league','defense','rookie'], 'Invalid team_type provided.'
+
+    allnba_soup = get_bref_soup('/awards/all_%type%.html'.replace('%type%', team_type))
+    raw_table = get_table(allnba_soup, 'all_awards_all_'+team_type, href_only=True)
+
+    raw_table['Season'] = raw_table['Season'].apply(lambda ref: int(ref.split('/')[-1].replace('.html','').split('_')[-1]))
+    raw_table['Lg'] = raw_table['Lg'].apply(lambda ref: ref.split('/')[-1].replace('.html','').split('_')[0])
+    raw_table['Tm'] = raw_table['Tm'].apply(lambda number: int(number[0]))
+    raw_table.columns = ['season', 'league', 'team_no', 5, 4, 3, 2, 1]
+    if team_type != 'league':
+        raw_table = pd.concat((raw_table.iloc[:,:-1],raw_table[1].str.split(',', expand=True)), axis=1)
+
+    allnba_table = raw_table.set_index(['season','league','team_no']).stack().reset_index()
+
+    def convert_position(number):
+        if number <= 2:
+            return 'G'
+        elif number == 5:
+            return 'C'
+        else:
+            return 'F'
+
+    allnba_table = allnba_table.rename(columns={'level_3':'position', 0:'player'})
+    if team_type == 'league':
+        allnba_table['position'] = allnba_table['position'].apply(lambda number: convert_position(number))
+    else:
+        allnba_table['position'] = np.nan
+    allnba_table['player'] = allnba_table['player'].apply(lambda ref: ref.split('/')[-1].replace('.html',''))
+    allnba_table = allnba_table[allnba_table['player'] != '']
+    allnba_table.loc[:,'allnbatype'] = team_type
+
+    return allnba_table
+
+def add_allnbateams(commit_changes=True):
+    '''Adds all nba teams (league, defense and rookie) to the database. Only adds seasons that are not already in the database.
+
+    Keyword arguments:
+    commit_changes - If False, will not commit changes to the database.
+    '''
+    all_dfs = []
+    for team_type in ['league', 'defense', 'rookie']:
+        all_dfs.append(get_allnbateams(team_type))
+
+    allnbateams = pd.concat(all_dfs)
+
+    allnbateams = stats_db.apply_mappings(allnbateams, 'players', ['player'], 'bref')
+    allnbateams = stats_db.apply_mappings(allnbateams, 'allnbatypes', ['allnbatype'])
+
+    nulls = allnbateams[allnbateams['player_id']=='NULL']
+    assert len(nulls) == 0, 'There are empty player ids in all nba teams for seasons {}'.format(list(set(nulls['season'])))
+
+    if commit_changes:
+        stats_db.add_to_db(allnbateams, 'allnbateams', 'season')

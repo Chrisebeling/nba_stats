@@ -4,7 +4,7 @@ import pandas as pd
 
 def get_soup(url_str, headers=None, timeout=None):
     '''Returns a soup object of the given url. Uses mozilla headers by default.
-    
+
     Keyword arguments:
     url_str -- the url of the desired webpage
     headers -- override headers for soup object (default None)
@@ -18,12 +18,12 @@ def get_soup(url_str, headers=None, timeout=None):
             return None
         else:
             raise err
-    
+
     return soup
 
 def get_bref_soup(bref_link, headers=None):
     '''Returns a soup object given the bref link.
-    
+
     Keyword arguments:
     bref_link -- The link for the bref page to be targeted
     headers -- override headers to be used when getting the soup object (default None)
@@ -37,7 +37,7 @@ def get_bref_tables(soup, desired_tables=True, href_category=None):
     Should work on most bref pages. Index is data-append-csv if this exists in header, othereise the header.
     '''
     tables = {}
-    
+
     for div in soup.find_all('div',{'id':desired_tables}):
         idx = 0
         title = div['id']
@@ -61,7 +61,7 @@ def get_bref_tables(soup, desired_tables=True, href_category=None):
                     table_dict[idx][category] = column.text
                     if category == href_category and column.find('a'):
                         table_dict[idx]['bref'] = column.find('a')['href']
-                
+
                 # increment index for next row
                 idx += 1
 
@@ -69,7 +69,7 @@ def get_bref_tables(soup, desired_tables=True, href_category=None):
 
     return tables
 
-def get_table(soup, desired_table, href_column=None):
+def get_table(soup, desired_table, href_column=None, href_only=False):
     '''Returns the table of a given bref_soup. Works well for loosely defined tables.
     Where columns are missing in a row, fills with empty columns at the end of row.
 
@@ -77,6 +77,7 @@ def get_table(soup, desired_table, href_column=None):
     soup -- The soup to extract the table from
     desired_table -- The name of the table to be extracted
     href_column -- The column to extract an href from (default None)
+    href_only -- Will get href for all columns if it exists (default False)
     '''
     table_rows=[]
 
@@ -89,12 +90,21 @@ def get_table(soup, desired_table, href_column=None):
 
     for row in rows:
         row_contents = row.find_all(['td','th'])
-        row_data = [x.text for x in row_contents]
+        if href_only:
+            row_data = []
+            for column in row_contents:
+                if column.find('a'):
+                    row_data.append(','.join([x['href'] for x in column.find_all('a')]))
+                else:
+                    row_data.append(column.text)
+        else:
+            row_data = [x.text for x in row_contents]
         missing_cols = exp_cols - len(row_data)
         row_data += ['']*missing_cols
-        if href_column:
+        if href_column and not href_only:
             row_data.append(row_contents[href_column].find('a')['href'])
 
         table_rows.append(row_data)
 
-    return pd.DataFrame(table_rows, columns=header+['href'])
+    return_header = header +['href'] if href_column else header
+    return pd.DataFrame(table_rows, columns=return_header)
