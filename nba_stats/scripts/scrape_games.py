@@ -5,7 +5,8 @@ import os
 import configparser
 
 from nba_stats.read_write.db_insert import SqlDataframes
-from nba_stats.scraping.build_db import get_boxscore_htmls_year, get_game_soups,add_basic_gamestats, get_players_urls, get_all_players, get_colleges, get_teams, get_playoff_games
+from nba_stats.scraping.build_db import get_boxscore_htmls_year, get_game_soups,add_basic_gamestats, get_players_urls
+from nba_stats.scraping.build_db import get_all_players, get_colleges, get_teams, get_playoff_games, add_allnbateams
 from nba_stats.read_write.config import get_dbconfig
 
 logger = logging.getLogger()
@@ -62,13 +63,18 @@ def update_games(year):
     else:
         stats_db.add_to_db(playoffs_ids, 'playoffgames', 'game_id', 'game_id')
 
+def periodic_scrape(action):
+    stats_db = SqlDataframes()
+
+    add_allnbateams(action)
 
 def scrape_function():
     parser = argparse.ArgumentParser(description="Scrape boxscores where boxscore not already in db.")
     parser.add_argument('-l', '--loops', nargs='?', type=int, default=1, help='The number of loops to run.')
     parser.add_argument('-c', '--count_max', nargs='?', type=int, default=100, help='The number of games to scrape per loop.')
     parser.add_argument('-n', '--action', action='store_false', help='If set, scrape will not be sent to db')
-    parser.add_argument('-t', '--scrape', nargs='?', type=str, default='both', choices=['games_only','boxscores_only','both'], 
+    parser.add_argument('-p', '--periodic', action='store_true', help='If set, periodic scrape will be run')
+    parser.add_argument('-t', '--scrape', nargs='?', type=str, default='both', choices=['games_only','boxscores_only','both'],
         help='Set function use. Able to scrape games, boxscores or both.')
     parser.add_argument('-y', '--year', nargs='?', type=int, default=0, help='The season to scrape games. Must be given if scraping games.')
 
@@ -79,6 +85,8 @@ def scrape_function():
         update_games(args.year)
     if args.scrape == 'both' or args.scrape == 'boxscores_only':
         scrape_games(args.loops, args.count_max, args.action)
+    if args.periodic == True:
+        periodic_scrape(args.action)
 
 if __name__== '__main__':
     scrape_function()
