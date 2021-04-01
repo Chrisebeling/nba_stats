@@ -140,9 +140,9 @@ class ReadDatabase(object):
         else:
             return self.summary[summary_name]
 
-    def basic_summary(self, player=None, categories=[], adv_categories=[], aggregator='AVG', groupby='season', team=False,
-        convert_ids=True, summary_name=None, modern_only=True, playoffs='all', adv_stats=False, player_fields=True,
-        years=None, min_date=None, max_date=None, suppress_query=True):
+    def basic_summary(self, player=None, categories=[], adv_categories=[], aggregator='AVG', groupby='season', groupby_team=False,
+        return_teams=False, lastteam_only=True,convert_ids=True, summary_name=None, modern_only=True, playoffs='all',
+        adv_stats=False, player_fields=True, years=None, min_date=None, max_date=None, suppress_query=True):
         '''Reads boxscore data and returns a summary dataframe grouped over desired category.
         Writes the df to the desired summary key so multiple summaries can be stored.
 
@@ -151,7 +151,9 @@ class ReadDatabase(object):
         categories - THe fields to read from the adv_boxscore table (default [])
         aggregator - The aggregator to summarise boxscore stats (default 'AVG')
 		groupby - The field to groupby stats over (default 'season')
-		team - Boolean, set to true if team field required per line (default False)
+		groupby_team - Boolean, set to true if team field required per line (default False)
+        return_teams - Boolean, if set to true will return the teams but not use as groupby (default False)
+        lastteam_only - Boolean, if set to true and return teams is activated, only return the last team the player was on (default True)
 		convert_ids - Boolean, set to True to convert ids to values (default True)
 		summary_name - The summary to write the df to, if none given will write to current summary (default None)
 		modern_only - Boolean, if true only returns seasons after 1983 (default True)
@@ -209,7 +211,7 @@ class ReadDatabase(object):
 
         boxscore_columns = list(self.read_table(get_str='SHOW COLUMNS FROM boxscores').loc[:,'Field'])
         des_categories = [x for x in boxscore_columns if '_id' not in x] if categories==[] else categories
-        stat_str = ', '. join(['{}(b.{}) AS {}'.format(aggregator, cat, cat) for cat in des_categories])
+        stat_str = ', '. join(['{0}(b.{1}) AS {1}'.format(aggregator, cat) for cat in des_categories])
 
         if adv_stats:
             adv_columns = list(self.read_table(get_str='SHOW COLUMNS FROM adv_boxscores').loc[:,'Field'])
@@ -233,9 +235,11 @@ class ReadDatabase(object):
         elif player == None and player_fields:
             extra_group = 'b.player_id, '
             extra_groupby = 'b.player_id, '
-        if team:
+        if groupby_team:
             extra_groupby = 'b.team_id, ' + extra_groupby
             extra_group = 'b.team_id, ' + extra_group
+        elif return_teams:
+            extra_group = 'GROUP_CONCAT(DISTINCT b.team_id ORDER BY g.date_game ASC) AS team_ids, ' + extra_group
         no_groupby = (groupby == '' or groupby == None)
         if no_groupby:
             return_season = 'MIN(g.season) AS min_season, MAX(g.season) AS max_season, '
@@ -286,6 +290,9 @@ class ReadDatabase(object):
                 self.summary[self.current_summary].loc[:,'fg2_pct'] = (self.summary[self.current_summary].loc[:,'fg2'] /
                                                                         self.summary[self.current_summary].loc[:,'fg2a'])
 
+            if return_teams and lastteam_only:
+                self.summary[self.current_summary].loc[:,'team_id'] = self.summary[self.current_summary]['team_ids'].str.split(',').str[-1].astype(int)
+                self.summary[self.current_summary] = self.summary[self.current_summary].drop(columns='team_ids', axis=1)
 
             if convert_ids:
                 self.convert_ids('player', ['last_name','first_name','height','weight'])
@@ -442,26 +449,47 @@ class ReadDatabase(object):
         self.summary_cats[self.current_summary] = [x for x in self.summary_cats[self.current_summary] if x not in remove_cols]
         self.summary[self.current_summary] = df
 
-    def season_games(self, season):
+    def season_games(self, seasons, convert_ids=True, summary_name='games'):
         '''Reads the game data for the given season: each game's date, scores etc. Df is then stored in summary named "games".
 
         Keyword arguments:
-        season - The season to read games for, must be an integer less than or equal to current year.
+        seasons - The season or min/max seasons to read games for, must be an integer or tuple/list of length 2.
+        convert_ids - Boolean, if set will convert ids to values (default True)
+        summary_name - The name to store the df as (default 'games')
         '''
-        self.set_summary('games')
+        self.set_summary(summary_name)
 
-        sql_str = '''SELECT date_game, t1.abbreviation AS home_team, t2.abbreviation AS visitor_team, home_pts > visitor_pts AS home_victory FROM games g
+        if type(seasons) == list or type(seasons) == tuple:
+            assert len(seasons) == 2, 'Must provide int or tuple/list of length 2'
+            min_season = seasons[0]
+            max_season = seasons[1]
+            season_str = 'g.season as season, '
+        else:
+            assert type(seasons) == int, 'Must provide int or tuple/list of length 2'
+            min_season, max_season = seasons, seasons
+            season_str = ''
+
+        if convert_ids:
+            team_str = 't1.abbreviation AS home_team, t2.abbreviation AS visitor_team, '
+            team_join = '''LEFT JOIN teams t1 on g.home_team_id = t1.team_id
+                            LEFT JOIN teams t2 on g.visitor_team_id = t2.team_id'''
+        else:
+            team_str = 'g.home_team_id AS home_team, g.visitor_team_id AS visitor_team, '
+            team_join = ''
+
+        sql_str = '''SELECT {2}date_game, {3}
+                        home_pts > visitor_pts AS home_victory FROM games g
                     LEFT JOIN playoffgames p on g.game_id = p.game_id
-                    LEFT JOIN teams t1 on g.home_team_id = t1.team_id
-                    LEFT JOIN teams t2 on g.visitor_team_id = t2.team_id
-                    WHERE g.season = {} and (p.series_id = 23 or p.series_id IS NULL)'''.format(season)
+                    {4}
+                    WHERE g.season >= {0} AND g.season <= {1} AND (p.series_id = 23 or p.series_id IS NULL)'''.format(
+                        min_season, max_season, season_str, team_str, team_join)
 
         season_games = self.read_table(get_str=sql_str)
         season_games.loc[:,'visitor_victory'] = 1 - season_games.loc[:,'home_victory']
 
         self.summary[self.current_summary] = season_games
 
-    def standings(self, max_date=None, rank_method='min'):
+    def standings(self, max_date=None, rank_method='min', override_df=pd.DataFrame()):
         '''Calculates the standings at the date provided.
         The games summary for the given season must be already stored. Run season_games if it is not.
         Returns the games included in the stanndings and the league standings. Ties are all given the same ranking by default.
@@ -469,9 +497,13 @@ class ReadDatabase(object):
         Keyword arguments:
         max_date - The date to take the standings on. If not provided, will give current standings (default None)
         rank_method - The method used to sort the standings (default 'min')
+        override_df - If provided, will use this df instead of stored df (default None)
         '''
-        assert 'games' in self.summary.keys(), '"games" summary not loaded, please run season_games function.'
-        games_restricted = self.summary['games'].copy()
+        if override_df.empty:
+            assert 'games' in self.summary.keys(), '"games" summary not loaded, please run season_games function.'
+            games_restricted = self.summary['games'].copy()
+        else:
+            games_restricted = override_df.copy()
 
         if max_date != None:
             season_start = games_restricted['date_game'].min()
@@ -497,3 +529,26 @@ class ReadDatabase(object):
         standings.loc[:,'position'] = standings['W_pct'].rank(ascending=False, method=rank_method).astype(int)
 
         return games_restricted, standings.sort_values('position')
+
+    def wpct_all(self, override_df=pd.DataFrame()):
+        '''Returns a df containings the W pct for teams per season.
+        Must run the season games query separately over more than 1 season.
+
+        Keyword arguments:
+        override_df - If provided this df will be used instead of the stored games df
+        '''
+        if override_df.empty:
+            assert 'games' in self.summary.keys(), '"games" summary not loaded, please run season_games function.'
+            all_games = self.summary['games'].copy()
+        else:
+            all_games = override_df.copy()
+
+        all_standings = []
+        for season, season_df in all_games.groupby('season'):
+            temp_df = season_df.drop('season', axis=1)
+            _, temp_standings = self.standings(override_df=temp_df)
+            temp_standings = temp_standings.reset_index().rename(columns={'index':'team'})
+            temp_standings.loc[:,'season'] = season
+            all_standings.append(temp_standings[['team','season','W_pct']])
+
+        return pd.concat(all_standings)
