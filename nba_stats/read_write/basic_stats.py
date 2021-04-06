@@ -101,10 +101,12 @@ class ReadDatabase(object):
             if not df.empty:
                 float_columns = [header for header, item in zip(table_columns, table_lines[0]) if isfloat(item)]
 
-                try:
-                    df[float_columns] = df[float_columns].apply(pd.to_numeric)
-                except Exception as e:
-                    print('Could not convert float columns to numeric: {}'.format(e))
+                # apply on each column individually so only failed do not convert
+                for float_column in float_columns:
+                    try:
+                        df[[float_column]] = df[[float_column]].apply(pd.to_numeric)
+                    except Exception as e:
+                        print('Could not convert float columns to numeric: {}'.format(e))
 
             return df
 
@@ -221,14 +223,21 @@ class ReadDatabase(object):
 
             adv_table = 'LEFT JOIN adv_boxscores a ON b.game_id = a.game_id and b.player_id = a.player_id'
 
+        pct_agg = aggregator if aggregator == '' else 'SUM'
         for shot_type in ['fg','fg3','ft']:
             if shot_type in des_categories and shot_type + 'a' in des_categories:
-                shot_str = ', {0}(b.{1})/{0}(b.{1}a) AS {1}_pct'.format(aggregator, shot_type)
+                shot_str = ', {0}(b.{1})/{0}(b.{1}a) AS {1}_pct'.format(pct_agg, shot_type)
                 stat_str += shot_str
+        # add fg2 stats if fg and fg3 stats are in data
+        if categories == []:
+            for attempt in ['', 'a']:
+                stat_str += ', {0}(b.fg{1}-b.fg3{1}) AS fg2{1}'.format(aggregator, attempt)
+            stat_str += ', {0}(b.fg-b.fg3)/{0}(b.fga-b.fg3a) AS fg2_pct'.format(pct_agg)
+
         if 'ast' in des_categories and 'tov' in des_categories:
-            stat_str += ', {0}(b.ast)/{0}(b.tov) AS assist_tov'.format(aggregator)
+            stat_str += ', {0}(b.ast)/{0}(b.tov) AS assist_tov'.format(pct_agg)
         if sum([(x in des_categories) for x in ['pts','fga','fta']]) == 3:
-            stat_str += ', {0}(b.pts)/(2*({0}(b.fga)+0.44*{0}(b.fta))) as ts_pct'.format(aggregator)
+            stat_str += ', {0}(b.pts)/(2*({0}(b.fga)+0.44*{0}(b.fta))) as ts_pct'.format(pct_agg)
 
         if groupby == 'game_id':
             extra_group = 'g.home_pts, g.home_team_id, g.visitor_pts, g.visitor_team_id, g.date_game, '
@@ -280,16 +289,6 @@ class ReadDatabase(object):
         if self.summary[self.current_summary].empty:
             print('{} dataframe is empty.'.format(self.current_summary))
         else:
-            # add fg2 stats if fg and fg3 stats are in data
-            headers_set = set(self.summary[self.current_summary].columns)
-            if categories == [] and set(['fg','fga','fg3','fg3da']).issubset(headers_set):
-                self.summary[self.current_summary].loc[:,'fg2'] = (self.summary[self.current_summary].loc[:,'fg'] -
-                                                                    self.summary[self.current_summary].loc[:,'fg3'])
-                self.summary[self.current_summary].loc[:,'fg2a'] = (self.summary[self.current_summary].loc[:,'fga'] -
-                                                                    self.summary[self.current_summary].loc[:,'fg3a'])
-                self.summary[self.current_summary].loc[:,'fg2_pct'] = (self.summary[self.current_summary].loc[:,'fg2'] /
-                                                                        self.summary[self.current_summary].loc[:,'fg2a'])
-
             if return_teams and lastteam_only:
                 self.summary[self.current_summary].loc[:,'team_id'] = self.summary[self.current_summary]['team_ids'].str.split(',').str[-1].astype(int)
                 self.summary[self.current_summary] = self.summary[self.current_summary].drop(columns='team_ids', axis=1)
