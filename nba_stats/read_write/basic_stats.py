@@ -329,6 +329,32 @@ class ReadDatabase(object):
             columns = [x for x in return_df.columns if x not in self.summary_cats[self.current_summary]]
             self.summary[self.current_summary] = return_df[self.summary_cats[self.current_summary] + columns]
 
+    def df_ids(self, df, id_type, des_columns, column_convert=None, header_override=None, keep_id=False):
+        '''Use to merge on id column of a table in the db. i.e. convert player_id to player name.
+        Takes df provided and replaces the id column with the desired columns from the given table in the database.
+
+        Keyword Arguments:
+        id_type - the id name, must refer to a table name and the id name of the header
+        des_columns - the columns from the id table to attach to the summary df
+        column_convert - a dict where keys are original header names and values are desired values. Converts any relevant header names to desired name (default None)
+        keep_id - If true, will keep the id column (default None)
+        '''
+        id_header = id_type + '_id'
+        assert id_header in df.columns or header_override != None, 'id_type not in df columns.'
+        table_name = id_type+'s' if id_type[-1] != 's' else id_type
+        id_df = self.read_table(table_name, [id_header] + des_columns)
+        left_header = id_header if header_override == None else header_override
+        return_df = df.merge(id_df, how='left', left_on=left_header, right_on=id_header)
+        if not keep_id:
+            for header in [left_header, id_header]:
+                if header in return_df.columns:
+                    return_df = return_df.drop(columns=[header])
+
+        if column_convert:
+            return_df = return_df.rename(columns=column_convert)
+
+        return return_df
+
     def apply_qualifiers(self, qualifiers, return_subset=True, sort_on=None, sort_asc=False, all_columns=False):
         '''Applies a dict of qualifiers to the summary df, outputing the df with only items matching the qualifiers.
         Each key should be given in a string '>10' or '<10' form.
@@ -551,3 +577,190 @@ class ReadDatabase(object):
             all_standings.append(temp_standings[['team','season','W_pct']])
 
         return pd.concat(all_standings)
+
+    def playoffseries(self, games_name='playoffgames', series_name='playoffseries', modern_only=True):
+        '''Queries database for playoff games. Runs function to derive information from the raw playoff game data.
+        i.e. number of games in the series, possible number of games, cumulative series score
+        Creates a df containing each individual game and a df with each series. Dfs are stored in summary dict.
+
+        Keyword arguments:
+        games_name - The key to use in the summary dict for the playoff games df (default 'playoffgames')
+        series_name - The key to use in the summary dict for the playoff series df (default 'playoffseries')
+        modern_only - Only return seasons after 1983 (default True)
+        '''
+        sql_str = '''SELECT p.playoffgames_id, p.game_id, p.series_id, p.game_no, g.season, g.date_game, g.home_team_id, g.visitor_team_id, g.home_pts > g.visitor_pts AS home_wins
+            FROM playoffgames p
+            INNER JOIN games g ON g.game_id = p.game_id
+            WHERE p.series_id <> 23'''
+        if modern_only:
+            sql_str += ' and g.season > 1983'
+
+        playoffgames = self.read_table(get_str=sql_str)
+
+        team_ids = playoffgames[['home_team_id','visitor_team_id']]
+        playoffgames.loc[:,'teams_combo'] = team_ids.min(axis=1).astype(str) + ',' + team_ids.max(axis=1).astype(str)
+
+        # create a unique value for each series so it is easy to group each series
+        playoffgames = playoffgames.sort_values(['season', 'series_id', 'teams_combo'])
+        false_series_ids = playoffgames.groupby(['season', 'series_id', 'teams_combo'], as_index=False)['game_id'].min().rename(columns={'game_id':'false_series_id'})
+        playoffgames = playoffgames.merge(false_series_ids, how='left', on=['season', 'series_id', 'teams_combo'])
+        playoffgames = playoffgames.drop(['teams_combo'], axis=1)
+
+        playoffgames.loc[:,'homecourt_team_id'] = playoffgames['home_team_id'].where(playoffgames['game_no']==1, np.nan)
+        playoffgames.loc[:,'visitorcourt_team_id'] = playoffgames['visitor_team_id'].where(playoffgames['game_no']==1, np.nan)
+        playoffgames.loc[:,'homecourt_team_id'] = playoffgames.loc[:,'homecourt_team_id'].fillna(method='ffill').astype(int)
+        playoffgames.loc[:,'visitorcourt_team_id'] = playoffgames.loc[:,'visitorcourt_team_id'].fillna(method='ffill').astype(int)
+
+        playoffgames.loc[:,'homecourt_wins'] = playoffgames['home_wins'].where(playoffgames['home_team_id'] == playoffgames['homecourt_team_id'], 1-playoffgames['home_wins'])
+        playoffgames.loc[:,'homecourt_cumwins'] = playoffgames.groupby('false_series_id')['homecourt_wins'].cumsum()
+        playoffgames.loc[:,'visitorcourt_cumwins'] = playoffgames['game_no'] - playoffgames['homecourt_cumwins']
+        playoffgames.loc[:,'series_score'] = playoffgames['homecourt_cumwins'].astype(str) + '-' + playoffgames['visitorcourt_cumwins'].astype(str)
+
+        assert (playoffgames['homecourt_cumwins'] + playoffgames['visitorcourt_cumwins']).max() <= 7, 'More than 7 games in a series'
+        assert playoffgames['homecourt_cumwins'].max() <= 4, 'More than 4 wins by a team with homecourt in a series'
+        assert playoffgames['visitorcourt_cumwins'].max() <= 4, 'More than 4 wins by a team without homecourt in a series'
+
+        # create df that has one row per series, most columns are just duplicated in initial table, others require some aggregation
+        playoffseries = playoffgames.groupby('false_series_id').agg({'series_id':'first',
+                                                    'season':'first',
+                                                    'homecourt_team_id':'first',
+                                                    'visitorcourt_team_id':'first',
+                                                    'game_no':'max',
+                                                    'homecourt_cumwins':'max',
+                                                    'visitorcourt_cumwins':'max',
+                                                    'series_score':','.join}
+                                                ).rename(columns={'game_no':'games_required',
+                                                                  'homecourt_cumwins':'homecourt_wins',
+                                                                  'visitorcourt_cumwins':'visitorcourt_wins',
+                                                                 'series_score':'series_timeline'}
+                                                ).reset_index()
+        playoffseries.loc[:,'series_timeline'] = '0-0,'+playoffseries['series_timeline']
+
+        for team_column in ['homecourt_team_id', 'visitorcourt_team_id']:
+            playoffseries = self.df_ids(playoffseries, 'team', ['abbreviation'], column_convert={'abbreviation':team_column.replace('_id','')}, header_override=team_column)
+        playoffseries = self.df_ids(playoffseries, 'series', ['series_name','conference','round'])
+        playoffseries = playoffseries.set_index('false_series_id')
+
+        playoffseries.loc[:,'series_games'] = playoffseries[['homecourt_wins','visitorcourt_wins']].max(axis=1) * 2 - 1
+        assert set(playoffseries['series_games']) == set([5,7]), 'series games must be 5 or 7.'
+        gamesreq_check = (playoffseries['games_required'] > playoffseries['series_games']).sum()
+        assert gamesreq_check == 0, 'Games required must be less than or equal to series games, in {} cases it is not'.format(gamesreq_check)
+
+        playoffseries.loc[:,'homecourt_victory'] = playoffseries['homecourt_wins'] > playoffseries['visitorcourt_wins']
+        playoffseries.loc[:,'victor'] = playoffseries['homecourt_team'].where(playoffseries['homecourt_victory'], playoffseries['visitorcourt_team'])
+        playoffseries.loc[:,'loser'] = playoffseries['homecourt_team'].where(~playoffseries['homecourt_victory'], playoffseries['visitorcourt_team'])
+
+        series_wins = playoffgames[['false_series_id','game_no', 'home_wins']].set_index(['false_series_id','game_no']).unstack()
+        series_wins.columns = ['homegame_'+str(header[1]) for header in series_wins.columns]
+        playoffseries = playoffseries.merge(series_wins, how='left', left_index=True, right_index=True)
+
+        self.set_summary(games_name)
+        self.summary[self.current_summary] = playoffgames
+        self.set_summary(series_name)
+        self.summary[self.current_summary] = playoffseries
+
+    def win_probability(self, score, playoffseries=pd.DataFrame(), comeback=True, flipscore=True, force_game=None,
+                        rounds=[1,2,3,4], series_games=[5,7], seasons=1983):
+        '''Calculates the probability of a team winning or forcing a game given a series score.
+        By default, calculates the probability of a comeback win and is ambivalent to the home team in the score.
+        If the score is even, it is considered a comeback for the team without homecourt advantage to win.
+        Prints the probability and returns all instances where a team was successul.
+
+        Keyword arguments:
+        score - A string of the score of interest, in format "[0-4]-[0-4]"
+        playoffseries - The df containing playoff series. If not provided, will use default query of db (default pd.DataFrame())
+        comeback - If True, the probability refers to the team currently losing coming back and winning (default True)
+        flipscore - If True, the score provided will also be flipped, i.e. ambivalent to homecourt advantage (default True)
+        force_game - Set this to calculate the probabilty of forcing a game instead of just winning (default None)
+        rounds - The playoff rounds to include, provide a list of ints.
+                    Round 1 is the finals, each subsequent number is the round less significant.
+                    Round 4 is the current first round of the playoffs  (default [1,2,3,4])
+        series_games - Specify the length of rounds to include as a list of ints (default [5,7])
+        seasons - Specify the seasons to include. If an int is provided, it will be used a min,
+                    otherwise provide a min/max list/tuple (default 1983)
+        '''
+        # if no df is specified, query db if required and use store playoffseries df
+        if playoffseries.empty:
+            if 'playoffseries' not in self.summary.keys():
+                self.playoffseries()
+            playoffseries = self.summary['playoffseries']
+
+        filtered_series = playoffseries[playoffseries['round'].isin(rounds)]
+        filtered_series = filtered_series[filtered_series['series_games'].isin(series_games)]
+
+        if type(seasons) == int:
+            seasons = (seasons, filtered_series['season'].max()+1)
+
+        assert type(seasons) == tuple or type(seasons) == list, 'seasons must be an int or list/tuple'
+        assert len(seasons) == 2, 'seasons must be an int or of length 2, {} of {} provided'.format(type(seasons), len(seasons))
+        filtered_series = filtered_series[filtered_series['season'].between(seasons[0], seasons[1])]
+
+        home_wins = int(score[0])
+        visitor_wins = int(score[-1])
+
+        if home_wins == visitor_wins:
+            home_ahead = True
+            flipscore = False
+        else:
+            home_ahead = home_wins > visitor_wins
+        check_homewin = not home_ahead if comeback else home_ahead
+        scores = [score, score[::-1]] if flipscore else [score]
+
+        if flipscore:
+            prob_str = 'losing'
+        else:
+            prob_str = 'home' if check_homewin else 'visitor'
+        winning_str = 'forcing game {}'.format(force_game) if force_game else 'winning'
+        print('Probability of {} team {}: '.format(prob_str, winning_str), end='')
+
+        packages = []
+        for filter_score in scores:
+            filter1 = filtered_series['series_timeline'].str.contains(filter_score)
+            packages.append(winfilter(filtered_series, filter1, home_victor=check_homewin, force_game=force_game))
+            check_homewin = not check_homewin
+
+        package2 = (0,0,pd.DataFrame()) if len(packages) == 1 else packages[1]
+
+        return playoff_probability(filtered_series, packages[0], package2)
+
+def winfilter(playoffseries, filter1, home_victor=True, force_game=None):
+    '''Applies the filter specified and then finds the occasions where teams have won/forced game x from this position.
+    Returns:
+    num - the number of times teams in the applied filter have won.
+    den - the total number of times this filter has occurred.
+    combined_filter - the filter matching scenarios where teams have won in this scenario
+
+    Keyword arguments:
+    playoffseries - The df containing playoff series.
+    filter1 - The filter to use to get the series in question, must be same size as playoffseries df
+    home_victor - If True, will return results for cases where the home team is victorious (default True)
+    force_game - If set, the series reaching the given game will be considered a "victory"
+                    i.e. results will now relate to the scenario of forcing game x (default None)
+    '''
+    if force_game:
+        filter2 = playoffseries['games_required'] >= force_game
+    else:
+        filter2 = playoffseries['homecourt_victory'] if home_victor else ~playoffseries['homecourt_victory']
+    combined_filter = filter1 & filter2
+    num = sum(combined_filter)
+    den = sum(filter1)
+    return num, den, combined_filter
+
+def playoff_probability(playoffseries, package1, package2=(0,0,pd.DataFrame())):
+    '''Takes the num, den and combined filter from winfilter function.
+    Returns the probability results and instances where teams have been successful.
+
+    Keyword arguments:
+    playoffseries - The df containing playoffseries.
+    package1 - a tuple containig num, den and combined_filter.
+    package2 - a tuple containig num, den and combined_filter (default (0,0,pd.DataFrame()))
+    '''
+    num = package1[0] + package2[0]
+    den = package1[1] + package2[1]
+    print('{:.1%} ({}/{})'.format(num/den, num, den))
+    des_columns = ['season','series_name','homecourt_team','visitorcourt_team','homecourt_wins','visitorcourt_wins','victor','loser','homecourt_victory','series_timeline']
+
+    if not package2[2].empty:
+        return playoffseries[package1[2]|package2[2]][des_columns].sort_values('season', ascending=False)
+    else:
+        return playoffseries[package1[2]][des_columns].sort_values('season', ascending=False)
