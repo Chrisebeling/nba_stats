@@ -642,8 +642,9 @@ class ReadDatabase(object):
         playoffseries = playoffseries.set_index('false_series_id')
 
         playoffseries.loc[:,'series_games'] = playoffseries[['homecourt_wins','visitorcourt_wins']].max(axis=1) * 2 - 1
-        assert set(playoffseries['series_games']) == set([5,7]), 'series games must be 5 or 7.'
-        gamesreq_check = (playoffseries['games_required'] > playoffseries['series_games']).sum()
+        current_check = playoffseries['season'] == dt.date.today().year
+        assert ((playoffseries['series_games'].isin([5,7])) | (current_check)).mean() == 1, 'series games must be 5 or 7.'
+        gamesreq_check = ((playoffseries['games_required'] > playoffseries['series_games']) & (~current_check)).sum()
         assert gamesreq_check == 0, 'Games required must be less than or equal to series games, in {} cases it is not'.format(gamesreq_check)
 
         playoffseries.loc[:,'homecourt_victory'] = playoffseries['homecourt_wins'] > playoffseries['visitorcourt_wins']
