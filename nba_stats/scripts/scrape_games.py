@@ -58,7 +58,7 @@ def update_games(year):
     stats_db.add_to_db(games_ids, 'games', 'bref', 'date_game')
 
     playoffs_ids = get_playoff_games((year, year))
-    if playoffs_ids == None:
+    if playoffs_ids.empty:
         logger.info('No playoff games added for season: {}'.format(year))
     else:
         stats_db.add_to_db(playoffs_ids, 'playoffgames', 'game_id', 'game_id')

@@ -556,7 +556,7 @@ def get_playoff_games(season_range):
     playoffs_table_restricted = playoffs_table[(playoffs_table.loc[:,'season'] >= season_range[0]) & (playoffs_table.loc[:,'season'] <= season_range[1])]
 
     if playoffs_table_restricted.empty:
-        return None
+        return pd.DataFrame()
 
     pbar = progressbar.ProgressBar(max_value=len(playoffs_table_restricted),
                                    widgets=[
