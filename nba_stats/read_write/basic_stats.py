@@ -474,7 +474,7 @@ class ReadDatabase(object):
         self.summary_cats[self.current_summary] = [x for x in self.summary_cats[self.current_summary] if x not in remove_cols]
         self.summary[self.current_summary] = df
 
-    def season_games(self, seasons, convert_ids=True, summary_name='games'):
+    def season_games(self, seasons=(1984,2100), convert_ids=True, summary_name='games'):
         '''Reads the game data for the given season: each game's date, scores etc. Df is then stored in summary named "games".
 
         Keyword arguments:
@@ -563,7 +563,9 @@ class ReadDatabase(object):
         override_df - If provided this df will be used instead of the stored games df
         '''
         if override_df.empty:
-            assert 'games' in self.summary.keys(), '"games" summary not loaded, please run season_games function.'
+            if 'games' not in self.summary.keys():
+                print('"games" summary loaded, season_games function run for all modern (>1983) seasons.')
+                self.season_games()
             all_games = self.summary['games'].copy()
         else:
             all_games = override_df.copy()
@@ -636,6 +638,14 @@ class ReadDatabase(object):
                                                 ).reset_index()
         playoffseries.loc[:,'series_timeline'] = '0-0,'+playoffseries['series_timeline']
 
+        self.season_games(convert_ids=False)
+        w_pct = self.wpct_all()
+        for h_v in ['home', 'visitor']:
+            playoffseries = playoffseries.merge(w_pct, how='left', left_on=[h_v+'court_team_id','season'], right_on=['team','season']
+                    ).drop(columns=['team']
+                    ).rename(columns={'W_pct':h_v+'court_wpct'})
+        playoffseries.loc[:,'wpct_diff'] = playoffseries['homecourt_wpct'] - playoffseries['visitorcourt_wpct']
+
         for team_column in ['homecourt_team_id', 'visitorcourt_team_id']:
             playoffseries = self.df_ids(playoffseries, 'team', ['abbreviation'], column_convert={'abbreviation':team_column.replace('_id','')}, header_override=team_column)
         playoffseries = self.df_ids(playoffseries, 'series', ['series_name','conference','round'])
@@ -661,7 +671,7 @@ class ReadDatabase(object):
         self.summary[self.current_summary] = playoffseries
 
     def win_probability(self, score, playoffseries=pd.DataFrame(), comeback=True, flipscore=True, force_game=None,
-                        rounds=[1,2,3,4], series_games=[5,7], seasons=1983):
+                        rounds=[1,2,3,4], series_games=[5,7], wpct_column='wpct_diff', wpct=(-1,1), seasons=1983):
         '''Calculates the probability of a team winning or forcing a game given a series score.
         By default, calculates the probability of a comeback win and is ambivalent to the home team in the score.
         If the score is even, it is considered a comeback for the team without homecourt advantage to win.
@@ -677,6 +687,8 @@ class ReadDatabase(object):
                     Round 1 is the finals, each subsequent number is the round less significant.
                     Round 4 is the current first round of the playoffs  (default [1,2,3,4])
         series_games - Specify the length of rounds to include as a list of ints (default [5,7])
+        wpct_column - The column to apply the wpct filter to (default 'wpct_diff')
+        wpct - Games with a wpct in this range will be included (default (-1,1))
         seasons - Specify the seasons to include. If an int is provided, it will be used a min,
                     otherwise provide a min/max list/tuple (default 1983)
         '''
@@ -688,6 +700,7 @@ class ReadDatabase(object):
 
         filtered_series = playoffseries[playoffseries['round'].isin(rounds)]
         filtered_series = filtered_series[filtered_series['series_games'].isin(series_games)]
+        filtered_series = filtered_series[filtered_series[wpct_column].between(wpct[0],wpct[1])]
 
         if type(seasons) == int:
             seasons = (seasons, filtered_series['season'].max()+1)
@@ -759,7 +772,8 @@ def playoff_probability(playoffseries, package1, package2=(0,0,pd.DataFrame())):
     num = package1[0] + package2[0]
     den = package1[1] + package2[1]
     print('{:.1%} ({}/{})'.format(num/den, num, den))
-    des_columns = ['season','series_name','homecourt_team','visitorcourt_team','homecourt_wins','visitorcourt_wins','victor','loser','homecourt_victory','series_timeline']
+    des_columns = ['season','series_name','homecourt_team','homecourt_wpct','visitorcourt_team','visitorcourt_wpct',
+        'wpct_diff','homecourt_wins','visitorcourt_wins','victor','loser','homecourt_victory','series_timeline']
 
     if not package2[2].empty:
         return playoffseries[package1[2]|package2[2]][des_columns].sort_values('season', ascending=False)
