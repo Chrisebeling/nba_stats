@@ -42,7 +42,7 @@ class SqlDataframes(object):
                 password=_password,
                 database=_db)
         else:
-            Raise("unix socket or port/host must be provided.")
+            raise("unix socket or port/host must be provided.")
         self.conn.autocommit = True
 
     def establish_cursor(self):
@@ -191,7 +191,7 @@ class SqlDataframes(object):
         else:
             return mapping
 
-    def apply_mappings(self, df, mapping_table, apply_columns, mapping_column=None, id_label=None):
+    def apply_mappings(self, df, mapping_table, apply_columns, mapping_column=None, id_label=None, abort=False):
         '''Replaces values with relevant ids, taking a current db table as mapping input
 
         Keyword arguments:
@@ -208,7 +208,10 @@ class SqlDataframes(object):
                 return "NULL"
             elif stripped_x not in id_mapping.keys():
                 logger_insert.info('%s not in mapping keys' % x)
-                return "NULL"  
+                if abort:
+                    raise "Mapping Error"
+                else:
+                    return "NULL"
             else:
                 return id_mapping[stripped_x]
 

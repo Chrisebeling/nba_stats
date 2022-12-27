@@ -2,7 +2,6 @@ import argparse
 import logging
 import datetime as dt
 import os
-import configparser
 
 from nba_stats.read_write.db_insert import SqlDataframes
 from nba_stats.scraping.build_db import get_boxscore_htmls_year, get_game_soups,add_basic_gamestats, get_players_urls
@@ -40,7 +39,7 @@ def scrape_games(loops, count_max, action):
             boxs_max = stats_db.read_max('boxscores', 'game_id')
             logger.info('FINISHED...Games remaining to scrape: {}'.format(games_max-boxs_max))
 
-def update_games(year):
+def update_games(year, action):
     stats_db = SqlDataframes()
 
     players_soups = get_players_urls()
@@ -51,16 +50,18 @@ def update_games(year):
 
     stats_db.add_to_db(colleges, 'colleges', check_column='college')
     players_ids = stats_db.apply_mappings(players, 'colleges', ['college1', 'college2'])
-    stats_db.add_to_db(players_ids, 'players', check_column='bref')
+    if action:
+        stats_db.add_to_db(players_ids, 'players', check_column='bref')
 
     season_boxscore_htmls = get_boxscore_htmls_year(year, regular_length=False)
     games_ids = stats_db.apply_mappings(season_boxscore_htmls, 'teams', ['home_team', 'visitor_team'])
-    stats_db.add_to_db(games_ids, 'games', 'bref', 'date_game')
+    if action:
+        stats_db.add_to_db(games_ids, 'games', 'bref', 'date_game')
 
     playoffs_ids = get_playoff_games((year, year))
-    if playoffs_ids == None:
+    if playoffs_ids.empty:
         logger.info('No playoff games added for season: {}'.format(year))
-    else:
+    elif action:
         stats_db.add_to_db(playoffs_ids, 'playoffgames', 'game_id', 'game_id')
 
 def periodic_scrape(action):
@@ -82,7 +83,7 @@ def scrape_function():
 
     if args.scrape == 'both' or args.scrape == 'games_only':
         assert args.year != 0, 'Year argument must be given to scrape games.'
-        update_games(args.year)
+        update_games(args.year, args.action)
     if args.scrape == 'both' or args.scrape == 'boxscores_only':
         scrape_games(args.loops, args.count_max, args.action)
     if args.periodic == True:

@@ -1,21 +1,34 @@
 from bs4 import BeautifulSoup
 import urllib
 import pandas as pd
+import time
+import logging
 
-def get_soup(url_str, headers=None, timeout=None):
+CRAWL_DELAY = 3
+
+logger = logging.getLogger(__name__)
+
+def get_soup(url_str, headers=None, timeout=None, crawl_delay=CRAWL_DELAY):
     '''Returns a soup object of the given url. Uses mozilla headers by default.
 
     Keyword arguments:
     url_str -- the url of the desired webpage
     headers -- override headers for soup object (default None)
     '''
+    if crawl_delay > 0:
+        time.sleep(crawl_delay)
     if headers == None:
-        headers = {'User-Agent':"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/43.0.2357.134 Safari/537.36"}
+        headers = {'User-Agent':"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:107.0) Gecko/20100101 Firefox/107.0"}
+    request = urllib.request.Request(url_str, headers=headers)
     try:
-        soup = BeautifulSoup(urllib.request.urlopen(urllib.request.Request(url_str, headers=headers), timeout=timeout),'html.parser')
+        response = urllib.request.urlopen(request, timeout=timeout)
+        soup = BeautifulSoup(response,'html.parser')
     except urllib.error.HTTPError as err:
         if err.code == 404:
             return None
+        elif err.code == 429:
+            logger.info('Response: {}, url: {}'.format(request.header_items(), url_str))
+            raise err
         else:
             raise err
 

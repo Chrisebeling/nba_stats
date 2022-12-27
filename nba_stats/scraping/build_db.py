@@ -7,7 +7,6 @@ import calendar
 import datetime as dt
 import pandas as pd
 import numpy as np
-import mysql.connector as sql
 import progressbar
 import logging
 
@@ -19,7 +18,6 @@ from nba_stats.read_write.functions import export_txt, create_schema_str
 CURRENT_YEAR = dt.datetime.now().year
 CURRENT_SEASON = CURRENT_YEAR + 1 if dt.datetime.now().month > 7 else CURRENT_YEAR
 BREF_HTML = 'https://www.basketball-reference.com'
-CRAWL_DELAY = 3
 SEASON_TEAMS = {1977: 22,
                 1981: 23,
                 1989: 25,
@@ -173,7 +171,7 @@ def get_boxscore_htmls_month(year, month, headers=None, url_template=None):
 
         return boxscores_month
 
-def get_boxscore_htmls_year(year, regular_length=True, crawl_sleep=True, season_teams=SEASON_TEAMS, playoff_teams=PLAYOFF_TEAMS):
+def get_boxscore_htmls_year(year, regular_length=True, season_teams=SEASON_TEAMS, playoff_teams=PLAYOFF_TEAMS):
     '''Returns the html links for games of a given season.
     Season year is year season finishes.
 
@@ -184,8 +182,6 @@ def get_boxscore_htmls_year(year, regular_length=True, crawl_sleep=True, season_
     season_boxscore_htmls = []
     months = list(range(10,13))+list(range(1,10))
     for month in months:
-        if crawl_sleep:
-            time.sleep(CRAWL_DELAY)
         try:
             month_games = get_boxscore_htmls_month(year, month)
         except:
@@ -217,6 +213,9 @@ def get_boxscore_htmls_year(year, regular_length=True, crawl_sleep=True, season_
         assert len(season_table_df) >= min_games and len(season_table_df) <= max_games, \
             'Impossible games number: %s, Min: %s, Max: %s. Year: %s' % \
             (len(season_table_df), min_games, max_games, year)
+    
+    if 'arena_name' in season_table_df.columns:
+        season_table_df = season_table_df.drop(columns=['arena_name'])
 
     return season_table_df
 
@@ -253,7 +252,7 @@ def get_season_gameno(games_df, regular_length=True):
 
     return season_games_df[['bref','game_id', 'home_gameno', 'visitor_gameno']]
 
-def get_game_soups(games_table, check_tables=['boxscores', 'fourfactors'], limit=500, crawl_sleep=True, max_errors=3):
+def get_game_soups(games_table, check_tables=['boxscores', 'fourfactors'], limit=500, max_errors=3):
     """Returns a list containing the game id, bref and soup of all games in games table not already in check tables.
     Will only add game to the list if it has not been already added to each check table.
 
@@ -276,8 +275,8 @@ def get_game_soups(games_table, check_tables=['boxscores', 'fourfactors'], limit
             current_ids = [game_id for game_id in current_ids if game_id in game_ids]
 
     new_games = games_table[~games_table.game_id.isin(current_ids)]
-    # read most recent games first
-    new_games = new_games.sort_values('game_id', ascending=False)
+    # read most recent games last
+    new_games = new_games.sort_values('game_id', ascending=True)
 
     if len(new_games) == 0:
         logger_build.info("No new games to add to database")
@@ -314,13 +313,11 @@ def get_game_soups(games_table, check_tables=['boxscores', 'fourfactors'], limit
 
             id_bref_soup.append((game_id, bref, soup))
             count += 1
-            if crawl_sleep:
-                time.sleep(CRAWL_DELAY)
             pbar.update(count)
     pbar.finish()
     end_time = time.time()
 
-    logger_build.info('Average run time excluding sleep: %s' % ((end_time - start_time-count*CRAWL_DELAY)/count))
+    logger_build.info('Average run time including sleep: %s' % ((end_time - start_time)/count))
 
     return id_bref_soup
 
@@ -399,11 +396,11 @@ def add_basic_gamestats(id_bref_soup, commit_changes=True):
 
     boxscores_df = stats_db.apply_mappings(boxscores_df, 'starters', ['starter'])
     boxscores_df = stats_db.apply_mappings(boxscores_df, 'players', ['player'], 'bref')
-    boxscores_df = stats_db.apply_mappings(boxscores_df, 'teams', ['team'])
+    boxscores_df = stats_db.apply_mappings(boxscores_df, 'teams', ['team'], mapping_column='abbreviation', abort=True)
     if 'player' in adv_boxscores_df.columns:
         adv_boxscores_df = stats_db.apply_mappings(adv_boxscores_df, 'players', ['player'], 'bref')
-    linescores_df = stats_db.apply_mappings(linescores_df, 'teams', ['team'])
-    fourfactors_df = stats_db.apply_mappings(fourfactors_df, 'teams', ['team'])
+    linescores_df = stats_db.apply_mappings(linescores_df, 'teams', ['team'], mapping_column='abbreviation')
+    fourfactors_df = stats_db.apply_mappings(fourfactors_df, 'teams', ['team'], mapping_column='abbreviation')
 
     if commit_changes:
         stats_db.add_to_db(boxscores_df, 'boxscores', 'game_id', 'game_id')
@@ -423,11 +420,9 @@ def get_boxscore(boxscore_soup, advanced=False):
     advanced -- If True, returns the advanced box score (Default False)
     '''
     # start_time = time.time()
-    table_dict = {}
     re_match = 'all_box-[A-Z]{3}-game-advanced' if advanced else 'all_box-[A-Z]{3}-game-basic'
     re_compile = re.compile(re_match)
-    find_team_regex = '(?<=all_box_)[a-z]{3}(?=_advanced)' if advanced else '(?<=all_box_)[a-z]{3}(?=_basic)'
-
+    
     tables = get_bref_tables(boxscore_soup, [re_compile])
     teams = get_away_home_teams(boxscore_soup)
 
@@ -436,14 +431,13 @@ def get_boxscore(boxscore_soup, advanced=False):
             tables[key].loc[:,'starter'] = tables[key].apply(lambda row: is_starter(row.name, row.reason), axis=1)
         else:
             tables[key].loc[:,'starter'] = tables[key].apply(lambda row: is_starter(row.name), axis=1)
-    #     team_abb = re.findall(find_team_regex, key)[0].upper()
     #     tables[key].loc[:,'team'] = team_abb
         tables[key].loc[:,'team'] = teams[0]
         teams.pop(0)
 
     try:
         boxscore = pd.concat([tables[key] for key in tables.keys()], sort=False).reset_index(drop=True)
-    except ValueError as e:
+    except ValueError:
         return pd.DataFrame()
     except:
         raise
@@ -593,10 +587,17 @@ def get_playoff_games(season_range):
     return series_ids
 
 def get_away_home_teams(soup):
+    find_team_regex = '(?<=teams/)[A-Za-z]{3}(?=/20[0-9]{2}.html)'
+    
     teams = []
     for item in soup.find_all('div',{'class':'scorebox'}):
-        for link in item.find_all('a',{'itemprop':'name'}):
-            teams.append(link.text)
+        for a in item.find_all('a'):
+            add_team = re.findall(find_team_regex, a['href'])
+            if len(add_team) == 1:
+                teams.append(add_team[0].upper())
+    
+    assert len(teams) == 2, 'should be two teams, returned {}'.format(teams)
+    assert set([len(x) for x in teams]) == {3}, 'Each team length should be 3, returned {}'.format(teams)
 
     return teams
 
