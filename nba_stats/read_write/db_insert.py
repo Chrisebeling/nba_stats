@@ -115,6 +115,8 @@ class SqlDataframes(object):
                 extra_info = ''
             logger_insert.info('Adding %s entries to table %s. %s' % (len(df_to_add), table_name, extra_info))
             sql_str = self.create_sql_str(df_to_add, table_name)
+            if table_name == 'colleges':
+                logger_insert.info('college insert string: {}'.format(sql_str))
 
             cursor = self.establish_cursor()
             cursor.execute(sql_str)

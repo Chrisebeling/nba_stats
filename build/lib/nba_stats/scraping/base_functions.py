@@ -4,7 +4,7 @@ import pandas as pd
 import time
 import logging
 
-CRAWL_DELAY = 3
+CRAWL_DELAY = 6
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,7 @@ def get_soup(url_str, headers=None, timeout=None, crawl_delay=CRAWL_DELAY):
     if crawl_delay > 0:
         time.sleep(crawl_delay)
     if headers == None:
-        headers = {'User-Agent':"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:107.0) Gecko/20100101 Firefox/107.0"}
+        headers = {'User-Agent':"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"}
     request = urllib.request.Request(url_str, headers=headers)
     try:
         response = urllib.request.urlopen(request, timeout=timeout)
@@ -27,8 +27,10 @@ def get_soup(url_str, headers=None, timeout=None, crawl_delay=CRAWL_DELAY):
         if err.code == 404:
             return None
         elif err.code == 429:
-            logger.info('Response: {}, url: {}'.format(request.header_items(), url_str))
-            raise err
+            logger.info('429 too many requests - Response: {}, url: {}'.format(request.header_items(), url_str))
+            time.sleep(60)
+            response = urllib.request.urlopen(request, timeout=timeout)
+            soup = BeautifulSoup(response,'html.parser')
         else:
             raise err
 

@@ -5,7 +5,7 @@ import os
 
 from nba_stats.read_write.db_insert import SqlDataframes
 from nba_stats.scraping.build_db import get_boxscore_htmls_year, get_game_soups,add_basic_gamestats, get_players_urls
-from nba_stats.scraping.build_db import get_all_players, get_colleges, get_teams, get_playoff_games, add_allnbateams
+from nba_stats.scraping.build_db import get_all_players, get_colleges, get_playoff_games, add_allnbateams
 from nba_stats.read_write.config import get_dbconfig
 
 logger = logging.getLogger()
@@ -39,20 +39,24 @@ def scrape_games(loops, count_max, action):
             boxs_max = stats_db.read_max('boxscores', 'game_id')
             logger.info('FINISHED...Games remaining to scrape: {}'.format(games_max-boxs_max))
 
-def update_games(year, action):
+def update_players(action):
     stats_db = SqlDataframes()
 
     players_soups = get_players_urls()
 
     players = get_all_players(players_soups)
     colleges = get_colleges(players)
-    teams = get_teams()
-
-    stats_db.add_to_db(colleges, 'colleges', check_column='college')
+    
+    if action:
+        stats_db.add_to_db(colleges, 'colleges', check_column='college')
     players_ids = stats_db.apply_mappings(players, 'colleges', ['college1', 'college2'])
     if action:
         stats_db.add_to_db(players_ids, 'players', check_column='bref')
 
+
+def update_games(year, action):
+    stats_db = SqlDataframes()
+    
     season_boxscore_htmls = get_boxscore_htmls_year(year, regular_length=False)
     games_ids = stats_db.apply_mappings(season_boxscore_htmls, 'teams', ['home_team', 'visitor_team'])
     if action:
@@ -74,13 +78,15 @@ def scrape_function():
     parser.add_argument('-l', '--loops', nargs='?', type=int, default=1, help='The number of loops to run.')
     parser.add_argument('-c', '--count_max', nargs='?', type=int, default=100, help='The number of games to scrape per loop.')
     parser.add_argument('-n', '--action', action='store_false', help='If set, scrape will not be sent to db')
+    parser.add_argument('-s', '--players', action='store_false', help='If set, will not scrape players and colleges')
     parser.add_argument('-p', '--periodic', action='store_true', help='If set, periodic scrape will be run')
     parser.add_argument('-t', '--scrape', nargs='?', type=str, default='both', choices=['games_only','boxscores_only','both'],
         help='Set function use. Able to scrape games, boxscores or both.')
     parser.add_argument('-y', '--year', nargs='?', type=int, default=0, help='The season to scrape games. Must be given if scraping games.')
 
     args = parser.parse_args()
-
+    if args.players == True:
+        update_players(args.action)
     if args.scrape == 'both' or args.scrape == 'games_only':
         assert args.year != 0, 'Year argument must be given to scrape games.'
         update_games(args.year, args.action)
