@@ -156,7 +156,7 @@ def get_boxscore_htmls_month(year, month, headers=None, url_template=None):
         except:
             raise
 
-        drop_columns = ['attendance', 'box_score_text', 'game_remarks', 'overtimes']
+        drop_columns = ['attendance', 'box_score_text', 'game_remarks', 'overtimes', 'game_duration']
         boxscores_month.drop(drop_columns, inplace=True, axis=1)
         boxscores_month.rename(columns={'game_start_time':'start_time', 'home_team_name':'home_team', 'visitor_team_name':'visitor_team'}, inplace=True)
         boxscores_month.date_game = boxscores_month.date_game.apply(lambda x: dt.datetime.strptime(x, '%a, %b %d, %Y').date().strftime('%Y-%m-%d'))
@@ -446,7 +446,7 @@ def get_boxscore(boxscore_soup, advanced=False):
     if advanced:
         column_drops = ['reason', 'player', 'efg_pct', 'ts_pct', 'fg3a_per_fga_pct', 'fta_per_fga_pct', 'starter', 'team', 'mp','bpm'] #bpm newly added, should add at some point
     else:
-        column_drops = ['reason', 'player'] + [header for header in boxscore.keys() if 'pct' in header]
+        column_drops = ['reason', 'player', 'game_score'] + [header for header in boxscore.keys() if 'pct' in header] # BPM new, could add
         boxscore['mp'] = boxscore['mp'].apply(lambda x: convert_mp(x))
 
     column_drops = [x for x in column_drops if x in boxscore.keys()]

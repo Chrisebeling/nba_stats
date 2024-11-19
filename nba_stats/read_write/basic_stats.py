@@ -51,7 +51,7 @@ class ReadDatabase(object):
                 password=_password,
                 database=_db)
         else:
-            Raise("unix socket or port/host must be provided.")
+            raise("unix socket or port/host must be provided.")
         self.conn.autocommit = True
 
     def establish_cursor(self):

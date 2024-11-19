@@ -63,7 +63,7 @@ class SqlDataframes(object):
         for df_column in df.columns:
             if df_column not in columns:
                 check = False
-                logger_insert.error('Error: {} not in table schema'.format(df_column))
+                logger_insert.error('Error: {} not in table schema (table: {})'.format(df_column, table_name))
 
         return check
         
