@@ -107,7 +107,8 @@ class SqlDataframes(object):
             insert_rows = ', '.join(df[check_column].dropna().unique())
             if table_name=='boxscores':
                 logger_insert.info('2')
-            old_rows = self.read_table(get_str='SELECT DISTINCT {0} FROM {1} WHERE {0} IN ({2})'.format(check_column, table_name, insert_rows))
+            old_rows = self.read_table(get_str='SELECT DISTINCT {0} FROM {1}'.format(check_column, table_name))
+            # old_rows = self.read_table(get_str='SELECT DISTINCT {0} FROM {1} WHERE {0} IN ({2})'.format(check_column, table_name, insert_rows))
             if table_name=='boxscores':
                 logger_insert.info('3')
             df_to_add = df[~df[check_column].isin(old_rows[check_column])]
