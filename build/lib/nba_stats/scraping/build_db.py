@@ -396,30 +396,19 @@ def add_basic_gamestats(id_bref_soup, commit_changes=True):
 
     pbar.finish()
 
-    logger_build.info('1')
     boxscores_df = stats_db.apply_mappings(boxscores_df, 'starters', ['starter'])
-    logger_build.info('2')
     boxscores_df = stats_db.apply_mappings(boxscores_df, 'players', ['player'], 'bref')
-    logger_build.info('3')
     boxscores_df = stats_db.apply_mappings(boxscores_df, 'teams', ['team'], mapping_column='abbreviation', abort=True)
-    logger_build.info('4')
     if 'player' in adv_boxscores_df.columns:
         adv_boxscores_df = stats_db.apply_mappings(adv_boxscores_df, 'players', ['player'], 'bref')
-        logger_build.info('5')
     linescores_df = stats_db.apply_mappings(linescores_df, 'teams', ['team'], mapping_column='abbreviation')
-    logger_build.info('6')
     fourfactors_df = stats_db.apply_mappings(fourfactors_df, 'teams', ['team'], mapping_column='abbreviation')
-    logger_build.info('7')
 
     if commit_changes:
         stats_db.add_to_db(boxscores_df, 'boxscores', 'game_id', 'game_id')
-        logger_build.info('8')
         stats_db.add_to_db(adv_boxscores_df, 'adv_boxscores', 'game_id', 'game_id')
-        logger_build.info('9')
         stats_db.add_to_db(linescores_df, 'linescores', 'game_id', 'game_id')
-        logger_build.info('10')
         stats_db.add_to_db(fourfactors_df, 'fourfactors', 'game_id', 'game_id')
-        logger_build.info('11')
 
     logger_build.info('Average run time of soup extraction: %s' % ((end_time - start_time)/length))
 

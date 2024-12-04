@@ -98,22 +98,14 @@ class SqlDataframes(object):
         '''
         if check_column:
             db_table = self.read_table(table_name, limit_rows=1)
-            if table_name=='boxscores':
-                logger_insert.info('1')
 
             assert check_column in db_table.columns, 'check column (%s) not in table columns' % check_column
             assert check_column in df.columns, 'check column (%s) not in df columns' % check_column
             
             # insert_rows = ', '.join(df[check_column].astype(str).dropna().unique())
-            # if table_name=='boxscores':
-            #     logger_insert.info('2')
             old_rows = self.read_table(get_str='SELECT DISTINCT {0} FROM {1}'.format(check_column, table_name))
             # old_rows = self.read_table(get_str='SELECT DISTINCT {0} FROM {1} WHERE {0} IN ({2})'.format(check_column, table_name, insert_rows))
-            if table_name=='boxscores':
-                logger_insert.info('3')
             df_to_add = df[~df[check_column].isin(old_rows[check_column])]
-            if table_name=='boxscores':
-                logger_insert.info('4')
         else:
             df_to_add = df.copy()
             
