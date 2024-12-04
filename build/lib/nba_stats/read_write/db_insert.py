@@ -104,9 +104,9 @@ class SqlDataframes(object):
             assert check_column in db_table.columns, 'check column (%s) not in table columns' % check_column
             assert check_column in df.columns, 'check column (%s) not in df columns' % check_column
             
-            insert_rows = ', '.join(df[check_column].dropna().unique())
-            if table_name=='boxscores':
-                logger_insert.info('2')
+            # insert_rows = ', '.join(df[check_column].astype(str).dropna().unique())
+            # if table_name=='boxscores':
+            #     logger_insert.info('2')
             old_rows = self.read_table(get_str='SELECT DISTINCT {0} FROM {1}'.format(check_column, table_name))
             # old_rows = self.read_table(get_str='SELECT DISTINCT {0} FROM {1} WHERE {0} IN ({2})'.format(check_column, table_name, insert_rows))
             if table_name=='boxscores':
