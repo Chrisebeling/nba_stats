@@ -97,12 +97,14 @@ class SqlDataframes(object):
         check_column -- the column to check if entries are new or already exist (Default None)
         '''
         if check_column:
-            db_table = self.read_table(table_name)
+            db_table = self.read_table(table_name, limit_rows=1)
             
             assert check_column in db_table.columns, 'check column (%s) not in table columns' % check_column
             assert check_column in df.columns, 'check column (%s) not in df columns' % check_column
             
-            df_to_add = df[~df[check_column].isin(db_table[check_column])]
+            insert_rows = ', '.join(df[check_column].dropna().unique())
+            old_rows = self.read_table(get_str='SELECT DISTINCT {0} FROM {1} WHERE {0} IN ({2})'.format(check_column, table_name, insert_rows))
+            df_to_add = df[~df[check_column].isin(old_rows[check_column])]
         else:
             df_to_add = df.copy()
             
@@ -130,7 +132,7 @@ class SqlDataframes(object):
         if return_results:
             return cursor.fetchall()
         
-    def read_table(self, table_name=None, columns=None, get_str=None, distinct_only=False):
+    def read_table(self, table_name=None, columns=None, get_str=None, distinct_only=False, limit_rows=None):
         "Returns the given table, all columns if none given"
         assert type(columns) == list or columns == None, 'Columns must be given in list, not %s' % type(columns)
 
@@ -139,7 +141,8 @@ class SqlDataframes(object):
         else:            
             columns_str = "*" if columns == None else ', '.join(columns) 
             distinct_str = ' DISTINCT ' if distinct_only else ''
-            sql_string = "SELECT %s%s FROM %s;" % (distinct_str, columns_str, table_name)
+            limit_str = "" if limit_rows==None else " LIMIT {}".format(limit_rows)
+            sql_string = "SELECT %s%s FROM %s%s;" % (distinct_str, columns_str, table_name, limit_str)
 
         cursor = self.establish_cursor()
 
