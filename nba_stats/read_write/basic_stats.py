@@ -31,25 +31,31 @@ def add_where(original, add):
 
 class ReadDatabase(object):
     def __init__(self, _password=PASSWORD, _user=USER, _db=DB, _host=HOST, _port=PORT,_unix=None):
+        self.password=_password
+        self.uswer=_user
+        self.db=_db
+        self.host=_host
+        self.port=_port
+        self.unix=_unix
         self.establish_connection()
         self.summary = {}
         self.summary_cats = {}
         self.current_summary = 'default'
 
-    def establish_connection(self, _password=PASSWORD, _user=USER, _db=DB, _host=HOST, _port=PORT,_unix=None):
-        if _unix:
+    def establish_connection(self):
+        if self.unix:
             self.conn = sql.connect(
-                unix_socket=_unix,
-                user=_user,
-                password=_password,
-                database=_db)
-        elif _port and _host:
+                unix_socket=self.unix,
+                user=self.user,
+                password=self.password,
+                database=self.db)
+        elif self.port and self.host:
             self.conn = sql.connect(
-                host=_host,
-                port=_port,
-                user=_user,
-                password=_password,
-                database=_db)
+                host=self.host,
+                port=self.port,
+                user=self.user,
+                password=self.password,
+                database=self.db)
         else:
             raise("unix socket or port/host must be provided.")
         self.conn.autocommit = True

@@ -58,7 +58,7 @@ def get_players_urls(players_url=None):
     success_count, http_error_count = 0, 0
     start_time = time.time()
     for letter in letters:
-        players_soup = get_soup(players_url + letter)
+        players_soup = get_soup(players_url + letter + '/')
         if players_soup != None:
             players_soups.append(players_soup)
             success_count += 1
@@ -319,7 +319,7 @@ def get_game_soups(games_table, check_tables=['boxscores', 'fourfactors'], limit
     pbar.finish()
     end_time = time.time()
 
-    logger_build.info('Average run time including sleep: %s' % ((end_time - start_time)/count))
+    logger_build.info('Average run time including sleep: {:0.2f} seconds'.format((end_time - start_time)/count))
 
     return id_bref_soup
 
@@ -410,7 +410,7 @@ def add_basic_gamestats(id_bref_soup, commit_changes=True):
         stats_db.add_to_db(linescores_df, 'linescores', 'game_id', 'game_id')
         stats_db.add_to_db(fourfactors_df, 'fourfactors', 'game_id', 'game_id')
 
-    logger_build.info('Average run time of soup extraction: %s' % ((end_time - start_time)/length))
+    logger_build.info('Average run time of soup extraction: {:0.2f} seconds'.format((end_time - start_time)/length))
 
 def get_boxscore(boxscore_soup, advanced=False):
     '''Returns a df containing boxscore data for both teams, given the soup of the boxscore url.

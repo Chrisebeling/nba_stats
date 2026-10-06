@@ -3,10 +3,13 @@ import urllib
 import pandas as pd
 import time
 import logging
+import random
+import httpx
 
-CRAWL_DELAY = 6
+CRAWL_DELAY = 10
 
 logger = logging.getLogger(__name__)
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 def get_soup(url_str, headers=None, timeout=None, crawl_delay=CRAWL_DELAY):
     '''Returns a soup object of the given url. Uses mozilla headers by default.
@@ -16,12 +19,21 @@ def get_soup(url_str, headers=None, timeout=None, crawl_delay=CRAWL_DELAY):
     headers -- override headers for soup object (default None)
     '''
     if crawl_delay > 0:
-        time.sleep(crawl_delay)
+        time.sleep(random.uniform(0.8*crawl_delay, 1.2*crawl_delay))
     if headers == None:
-        headers = {'User-Agent':"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"}
-    request = urllib.request.Request(url_str, headers=headers)
+        headers = {
+                    "User-Agent":"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+#                     'User-Agent':"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+                      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.5",
+                    "Accept-Encoding": "gzip, deflate, br",
+                    "Sec-Fetch-Dest": "document",
+                    "Sec-Fetch-Mode": "navigate",
+                    "Sec-Fetch-Site": "none",
+                    "Sec-Fetch-User": "?1",
+                    }
     try:
-        response = urllib.request.urlopen(request, timeout=timeout)
+        response = httpx.get(url_str, headers=headers, follow_redirects=True)
         soup = BeautifulSoup(response,'html.parser')
     except urllib.error.HTTPError as err:
         if err.code == 404:
@@ -29,10 +41,10 @@ def get_soup(url_str, headers=None, timeout=None, crawl_delay=CRAWL_DELAY):
         elif err.code == 429:
             logger.info('429 too many requests - Response: {}, url: {}'.format(request.header_items(), url_str))
             time.sleep(60)
-            response = urllib.request.urlopen(request, timeout=timeout)
+            response = httpx.get(url_str, headers=headers, follow_redirects=True)
             soup = BeautifulSoup(response,'html.parser')
         else:
-            raise err
+            return err
 
     return soup
 
